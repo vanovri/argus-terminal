@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0">
+  <title>ARGUS TERMINAL — HyperFrames Launch Composition (1920x1080 @ 30fps)</title>
+  <style>
+    :root {
+      --bg-obsidian: #06080c;
+      --bg-panel: #0a0e16;
+      --bg-elevated: #101624;
+      --border-strong: #1f293d;
+      --text-primary: #e6edf7;
+      --text-secondary: #8b9bb4;
+      --text-muted: #526178;
+      --amber: #ff9e00;
+      --emerald: #00e676;
+      --crimson: #ff3b5c;
+      --cyan: #00d2ff;
+      --purple: #b388ff;
+      --font-mono: "Consolas", "SFMono-Regular", "Liberation Mono", Menlo, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: var(--bg-obsidian);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #root {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(255, 158, 0, 0.08), transparent 55%),
+        radial-gradient(circle at 80% 80%, rgba(0, 210, 255, 0.06), transparent 50%),
+        var(--bg-obsidian);
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+    }
+
+    .scene-inner {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 96px;
+    }
+
+    /* Scene 1: Hook */
+    .hook-kicker {
+      color: var(--amber);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      margin-bottom: 28px;
+      padding: 8px 20px;
+      border: 1px solid rgba(255, 158, 0, 0.45);
+      background: rgba(255, 158, 0, 0.10);
+    }
+
+    .hook-headline-a,
+    .hook-headline-b {
+      font-size: 68px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      text-align: center;
+      line-height: 1.15;
+      max-width: 1500px;
+    }
+
+    .crimson-txt { color: var(--crimson); }
+    .emerald-txt { color: var(--emerald); }
+    .amber-txt   { color: var(--amber); }
+    .cyan-txt    { color: var(--cyan); }
+
+    .go-bar-shell {
+      margin-top: 48px;
+      width: 980px;
+      height: 76px;
+      background: #05070b;
+      border: 2px solid var(--amber);
+      box-shadow: 0 0 36px rgba(255, 158, 0, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px 0 0;
+    }
+
+    .go-prefix {
+      height: 100%;
+      background: rgba(255, 158, 0, 0.16);
+      border-right: 2px solid rgba(255, 158, 0, 0.4);
+      color: var(--amber);
+      font-size: 28px;
+      font-weight: 900;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+    }
+
+    .go-typed {
+      flex: 1;
+      padding: 0 28px;
+      font-size: 34px;
+      font-weight: 800;
+      color: var(--amber);
+      letter-spacing: 0.06em;
+    }
+
+    .go-btn-badge {
+      background: var(--emerald);
+      color: #021008;
+      font-size: 26px;
+      font-weight: 900;
+      padding: 12px 28px;
+    }
+
+    /* Scene 2 & 3: Workspace Frame */
+    .terminal-shell {
+      width: 1728px;
+      height: 912px;
+      background: var(--bg-panel);
+      border: 2px solid var(--border-strong);
+      display: grid;
+      grid-template-columns: 340px 1fr 380px;
+      grid-template-rows: 56px 56% 1fr;
+      gap: 2px;
+    }
+
+    .term-topbar {
+      grid-column: 1 / -1;
+      background: var(--bg-obsidian);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .pane-box {
+      background: var(--bg-panel);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid #111622;
+    }
+
+    .pane-hdr {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--amber);
+      border-bottom: 1px solid var(--border-strong);
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .security-banner {
+      margin-top: 16px;
+      padding: 18px 28px;
+      background: rgba(0, 230, 118, 0.12);
+      border: 2px solid var(--emerald);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    /* Scene 4: Outro */
+    .outro-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .outro-amber-box {
+      background: var(--amber);
+      color: #000;
+      font-size: 42px;
+      font-weight: 900;
+      padding: 8px 22px;
+    }
+
+    .outro-title {
+      font-size: 76px;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+      color: var(--text-primary);
+    }
+
+    .outro-sub {
+      font-size: 46px;
+      font-weight: 800;
+      color: var(--amber);
+      margin-top: 16px;
+      margin-bottom: 44px;
+    }
+
+    .telemetry-pills {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 48px;
+    }
+
+    .tele-pill {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      padding: 16px 28px;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="root"
+    data-composition-id="argus-terminal-launch"
+    data-width="1920"
+    data-height="1080"
+    data-fps="30"
+    data-duration="18"
+  >
+    <!-- Master Beat-Synced Soundtrack -->
+    <audio id="soundtrack" src="../work/soundtrack.wav" data-start="0" data-duration="18"></audio>
+
+    <!-- SCENE 1: THE HOOK (0.0s - 3.5s) -->
+    <section
+      id="scene-hook"
+      class="clip"
+      data-start="0"
+      data-duration="3.5"
+      data-track-index="1"
+      data-track-kind="graphics"
+    >
+      <div class="scene-inner" id="hook-stage">
+        <div class="hook-kicker" id="hook-kicker" data-var-text="LOCAL MARKET SIMULATION">
+          LOCAL MARKET SIMULATION
+        </div>
+        <h1 class="hook-headline-a" id="hook-line-a">
+          A BLOOMBERG-STYLE TERMINAL, <span class="amber-txt">BUILT AS A LOCAL SIMULATION.</span>
+        </h1>
+        <h1 class="hook-headline-b" id="hook-line-b">
+          ARGUS RUNS <span class="emerald-txt">LOCALLY.</span>
+        </h1>
+        <div class="go-bar-shell" id="hook-go-bar">
+          <span class="go-prefix">CMD&gt;</span>
+          <span class="go-typed" id="hook-typed-cmd">BTC-USD &lt;GO&gt;</span>
+          <span class="go-btn-badge">&lt;GO&gt;</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 2: LIVE MULTI-PANE TERMINAL & CANDLESTICK + L2 DEPTH (3.5s - 8.5s) -->
+    <section
+      id="scene-terminal"
+      class="clip"
+      data-start="3.5"
+      data-duration="5"
+      data-track-index="1"
+      data-track-kind="graphics"
+    >
+      <div class="scene-inner" id="terminal-stage">
+        <div class="terminal-shell" id="terminal-grid-s2">
+          <div class="term-topbar">
+            <span><strong class="amber-txt">[A] ARGUS//TERMINAL</strong> &nbsp; WS: LIVE (SIMULATED FEED)</span>
+            <span class="amber-txt">CMD&gt; BTC-USD &lt;GO&gt;</span>
+            <span>DESK: ACC-INST-01 // NAV: <strong class="emerald-txt">$10,042,850.00</strong></span>
+          </div>
+          <div class="pane-box">
+            <div class="pane-hdr"><span>P1 // MARKET WATCH</span><span>6 ASSETS</span></div>
+            <div>BTC-USD <strong class="emerald-txt">$94,500.00</strong> (+2.41%)</div>
+            <div>ETH-USD <strong class="emerald-txt">$3,180.00</strong> (+1.85%)</div>
+            <div>SOL-USD <strong class="emerald-txt">$212.50</strong> (+4.12%)</div>
+            <div>NVDA-EQ <strong class="emerald-txt">$148.20</strong> (+3.05%)</div>
+            <div>XAU-USD <strong class="crimson-txt">$2,745.00</strong> (-0.32%)</div>
+            <div>IDR-USD <strong class="cyan-txt">15,680.00</strong> (+0.11%)</div>
+          </div>
+          <div class="pane-box">
+            <div class="pane-hdr">
+              <span>P2 // BTC-USD OHLCV + EMA 9/21 + L2 DEPTH</span>
+              <span class="emerald-txt">$94,500.00 // VWAP $94,485.20</span>
+            </div>
+            <canvas id="s2-chart-canvas" width="940" height="420"></canvas>
+          </div>
+          <div class="pane-box" style="grid-row: 2 / 4;">
+            <div class="pane-hdr"><span>P3 // L2 ORDERBOOK &amp; TAPE</span><span>0.5 bps</span></div>
+            <div class="crimson-txt">ASK 94,502.00 | 4.85 BTC | 18.40</div>
+            <div class="crimson-txt">ASK 94,501.50 | 3.20 BTC | 13.55</div>
+            <div class="crimson-txt">ASK 94,501.00 | 2.65 BTC | 10.35</div>
+            <div class="crimson-txt">ASK 94,500.50 | 1.90 BTC | 7.70</div>
+            <div class="amber-txt" style="padding: 8px 0; border-top: 1px solid #1f293d; border-bottom: 1px solid #1f293d;">
+              MID PRICE: $94,500.00 // SPREAD: $0.50
+            </div>
+            <div class="emerald-txt">BID 94,499.50 | 2.40 BTC | 2.40</div>
+            <div class="emerald-txt">BID 94,499.00 | 3.80 BTC | 6.20</div>
+            <div class="emerald-txt">BID 94,498.50 | 4.50 BTC | 10.70</div>
+            <div class="emerald-txt">BID 94,498.00 | 6.10 BTC | 16.80</div>
+          </div>
+          <div class="pane-box">
+            <div class="pane-hdr"><span>P4 // DMA ORDER ROUTER</span><span>FIFO</span></div>
+            <div>SIDE: <strong class="emerald-txt">BUY // BID</strong> &nbsp; TYPE: <strong>LIMIT</strong></div>
+            <div>PRICE: <strong>$94,500.00</strong> &nbsp; QTY: <strong>1.00 BTC</strong></div>
+          </div>
+          <div class="pane-box">
+            <div class="pane-hdr"><span>P5 // MTM POSITIONS &amp; PNL</span><span class="emerald-txt">+$42,850.00</span></div>
+            <div>LONG 12.50 BTC-USD | ENTRY $91,820.00 | MARK $94,500.00 | <strong class="emerald-txt">+$33,500.00</strong></div>
+            <div>LONG 85.00 ETH-USD | ENTRY $3,070.00 | MARK $3,180.00 | <strong class="emerald-txt">+$9,350.00</strong></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 3: MATCHING ENGINE, READ-ONLY SQLITE CONSOLE & SEEDED-VULNERABILITY FIXES (8.5s - 13.5s) -->
+    <section
+      id="scene-engine"
+      class="clip"
+      data-start="8.5"
+      data-duration="5"
+      data-track-index="1"
+      data-track-kind="graphics"
+    >
+      <div class="scene-inner" id="engine-stage">
+        <div class="terminal-shell" id="terminal-grid-s3">
+          <div class="term-topbar">
+            <span><strong class="amber-txt">[A] ARGUS // MATCHING ENGINE &amp; SECURITY FIXES</strong></span>
+            <span class="emerald-txt">ORDER FILLED: BUY 2.50 BTC-USD @ $94,500.50 (SIMULATED)</span>
+            <span class="cyan-txt">NODE:SQLITE (WAL)</span>
+          </div>
+          <div class="pane-box" style="grid-column: 1 / 2; grid-row: 2 / 4;">
+            <div class="pane-hdr"><span>P4 // DMA MARKET SWEEP</span><span class="emerald-txt">EXECUTED</span></div>
+            <div>ACCOUNT: <strong class="cyan-txt">ACC-INST-01</strong></div>
+            <div>ORDER: <strong class="emerald-txt">BUY 2.5000 BTC-USD @ MARKET</strong></div>
+            <div>AVG FILL PX: <strong>$94,500.50</strong></div>
+            <div>NOTIONAL: <strong>$236,251.25</strong></div>
+            <div>MATCH ENGINE: <strong class="amber-txt">PRICE-TIME PRIORITY (FIFO)</strong></div>
+            <div>CLIENT TAG: <strong>ALPHA-DMA-01</strong></div>
+          </div>
+          <div class="pane-box" style="grid-column: 2 / 4; grid-row: 2 / 3;">
+            <div class="pane-hdr"><span>P5 // READ-ONLY SQL CONSOLE (NODE:SQLITE)</span><span class="amber-txt">SELECT-ONLY</span></div>
+            <div class="amber-txt">SELECT symbol, count(*) AS trades, round(sum(size * price), 2) AS notional FROM trades GROUP BY symbol ORDER BY notional DESC;</div>
+            <div>1. BTC-USD &nbsp;|&nbsp; TRADES: 1,428 &nbsp;|&nbsp; NOTIONAL: $134,946,000.00 &nbsp;|&nbsp; AVG PX: $94,498.20</div>
+            <div>2. ETH-USD &nbsp;|&nbsp; TRADES: 984 &nbsp;&nbsp;|&nbsp; NOTIONAL: $31,291,200.00 &nbsp;&nbsp;|&nbsp; AVG PX: $3,179.85</div>
+            <div>3. XAU-USD &nbsp;|&nbsp; TRADES: 612 &nbsp;&nbsp;|&nbsp; NOTIONAL: $16,799,400.00 &nbsp;&nbsp;|&nbsp; AVG PX: $2,744.90</div>
+          </div>
+          <div class="pane-box" style="grid-column: 2 / 4; grid-row: 3 / 4;">
+            <div class="pane-hdr"><span>SECURITY // SEEDED VULNERABILITIES</span><span class="emerald-txt">SECURITY SUITE 5/5 PASS</span></div>
+            <div class="security-banner">
+              <span class="emerald-txt">5 SEEDED VULNERABILITIES FIXED + REGRESSION-TESTED</span>
+              <span style="font-size: 14px; text-align: right; margin-left: 24px; max-width: 760px;">PARAMETERIZED ORDER SEARCH • READ-ONLY SQL CONSOLE • WEBHOOK EGRESS FILTER • RESTRICTED-ACCOUNT API KEY • 5x BUYING-POWER CAP + 64KB BODY LIMIT</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCENE 4: OUTRO / PUNCHLINE (13.5s - 18.0s) -->
+    <section
+      id="scene-outro"
+      class="clip"
+      data-start="13.5"
+      data-duration="4.5"
+      data-track-index="1"
+      data-track-kind="graphics"
+    >
+      <div class="scene-inner" id="outro-stage">
+        <div class="outro-brand">
+          <span class="outro-amber-box">A</span>
+          <h1 class="outro-title">ARGUS // TERMINAL</h1>
+        </div>
+        <h2 class="outro-sub">AN EDUCATIONAL TRADING SIM. RUNS ON YOUR MACHINE.</h2>
+        <div class="telemetry-pills">
+          <div class="tele-pill">6 SIM INSTRUMENTS</div>
+          <div class="tele-pill">FIFO MATCHING</div>
+          <div class="tele-pill">NODE:SQLITE + WS</div>
+          <div class="tele-pill">5 VULNS FIXED + TESTED</div>
+        </div>
+        <div class="go-bar-shell">
+          <span class="go-prefix">CMD&gt;</span>
+          <span class="go-typed">NPM START // LOCALHOST:3400 &lt;GO&gt;</span>
+          <span class="go-btn-badge">&lt;GO&gt;</span>
+        </div>
+        <div class="tele-pill" style="margin-top: 32px; color: var(--text-secondary);">ONE RUNTIME DEPENDENCY (ws) • 5 TEST SUITES • 51 CHECKS PASSING</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Deterministic HyperFrames Timeline Contract
+    window.__timelines = window.__timelines || {};
+
+    (function initDeterministicTimeline() {
+      const hookLineA = document.getElementById("hook-line-a");
+      const hookLineB = document.getElementById("hook-line-b");
+      const hookGoBar = document.getElementById("hook-go-bar");
+      const hookTyped = document.getElementById("hook-typed-cmd");
+      const fullCmd = "BTC-USD <GO>";
+
+      function renderAtTime(t) {
+        if (t < 1.5) {
+          hookLineA.style.transform = "scale(1)";
+          hookLineB.style.transform = "scale(0)";
+          hookGoBar.style.transform = "scale(0)";
+        } else if (t < 3.5) {
+          hookLineA.style.transform = "scale(0)";
+          hookLineB.style.transform = "scale(1)";
+          hookGoBar.style.transform = "scale(1)";
+          const progress = Math.max(0, Math.min(1, (t - 1.8) / 1.2));
+          const chars = Math.floor(progress * fullCmd.length);
+          hookTyped.textContent = fullCmd.slice(0, chars);
+        }
+      }
+
+      const tl = {
+        _time: 0,
+        time(val) {
+          if (typeof val === "number") {
+            this._time = val;
+            renderAtTime(val);
+            return this;
+          }
+          return this._time;
+        },
+        seek(val) {
+          return this.time(val);
+        },
+        pause() {
+          return this;
+        },
+        duration() {
+          return 18;
+        }
+      };
+
+      renderAtTime(0);
+      window.__timelines["argus-terminal-launch"] = tl;
+    })();
+  </script>
+</body>
+</html>

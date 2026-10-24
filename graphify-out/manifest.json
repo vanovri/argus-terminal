@@ -1,0 +1,86 @@
+{
+  "package.json": {
+    "mtime": 1792827136.0006452,
+    "seen": 1792828582.0011911,
+    "ast_hash": "2847761eee60280dd5b5f1b6d09ab141",
+    "semantic_hash": "2847761eee60280dd5b5f1b6d09ab141"
+  },
+  "public/js/app.js": {
+    "mtime": 1792827923.5665789,
+    "seen": 1792828582.0011911,
+    "ast_hash": "c74a3ea5a5ccc067a23250dc0bd05971",
+    "semantic_hash": "c74a3ea5a5ccc067a23250dc0bd05971"
+  },
+  "public/js/charts.js": {
+    "mtime": 1792827651.7474568,
+    "seen": 1792828582.0011911,
+    "ast_hash": "d6dd35691e1e52336465b35f605c3acf",
+    "semantic_hash": "d6dd35691e1e52336465b35f605c3acf"
+  },
+  "public/js/components.js": {
+    "mtime": 1792827741.8086565,
+    "seen": 1792828582.0011911,
+    "ast_hash": "378946cc3cc8a4bef121a2750750a6b0",
+    "semantic_hash": "378946cc3cc8a4bef121a2750750a6b0"
+  },
+  "src/db/database.js": {
+    "mtime": 1792827297.8609574,
+    "seen": 1792828582.0011911,
+    "ast_hash": "eb884737e366f2febe1b55471e375eef",
+    "semantic_hash": "eb884737e366f2febe1b55471e375eef"
+  },
+  "src/engine/marketSim.js": {
+    "mtime": 1792827446.4643295,
+    "seen": 1792828582.0011911,
+    "ast_hash": "db91f5ce098ab95cb09dca3d4ac95572",
+    "semantic_hash": "db91f5ce098ab95cb09dca3d4ac95572"
+  },
+  "src/engine/orderbook.js": {
+    "mtime": 1792828189.309688,
+    "seen": 1792828582.0011911,
+    "ast_hash": "d6f4c491ab6dcf448c69059796ce32e1",
+    "semantic_hash": "d6f4c491ab6dcf448c69059796ce32e1"
+  },
+  "src/server/index.js": {
+    "mtime": 1792827557.8780038,
+    "seen": 1792828582.0011911,
+    "ast_hash": "35c59fd3f66556c4a89bd32b791f3d32",
+    "semantic_hash": "35c59fd3f66556c4a89bd32b791f3d32"
+  },
+  "src/server/routes.js": {
+    "mtime": 1792828209.1093652,
+    "seen": 1792828582.0011911,
+    "ast_hash": "275cd0fea61567189520b534a2ae42f9",
+    "semantic_hash": "275cd0fea61567189520b534a2ae42f9"
+  },
+  "tests/e2e.test.js": {
+    "mtime": 1792827384.3158143,
+    "seen": 1792828582.0011911,
+    "ast_hash": "0f7a475181dada6164572da121092854",
+    "semantic_hash": "0f7a475181dada6164572da121092854"
+  },
+  "tests/security_pentest_poc.js": {
+    "mtime": 1792828243.5313413,
+    "seen": 1792828582.0011911,
+    "ast_hash": "91f30f7e8adeab1b735b292e4a9c951b",
+    "semantic_hash": "91f30f7e8adeab1b735b292e4a9c951b"
+  },
+  "ARCHITECTURE.md": {
+    "mtime": 1792827137.1677787,
+    "seen": 1792828582.0011911,
+    "ast_hash": "4e1dd8add344abd96bf2fa96ee18cff5",
+    "semantic_hash": "4e1dd8add344abd96bf2fa96ee18cff5"
+  },
+  "SECURITY_AUDIT_REPORT.md": {
+    "mtime": 1792828277.2775707,
+    "seen": 1792828582.0011911,
+    "ast_hash": "ba109e4633d8f5aee709a7c75fdb5c5b",
+    "semantic_hash": "ba109e4633d8f5aee709a7c75fdb5c5b"
+  },
+  "public/index.html": {
+    "mtime": 1792827391.090591,
+    "seen": 1792828582.0011911,
+    "ast_hash": "a1483e1788bb1f3e6ada5a4e7ce97fbf",
+    "semantic_hash": "a1483e1788bb1f3e6ada5a4e7ce97fbf"
+  }
+}

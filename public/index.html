@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en" class="dark-terminal">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARGUS TERMINAL // Institutional Multi-Asset &amp; L2 Execution Workstation</title>
+  <link rel="stylesheet" href="/css/terminal.css">
+</head>
+<body>
+  <a href="#main-workspace" class="skip-link">Skip to Argus Terminal Workspace</a>
+
+  <!-- TOP BLOOMBERG COMMAND HEADER -->
+  <header class="terminal-header" role="banner">
+    <div class="header-top-row">
+      <!-- Brand & System Telemetry -->
+      <div class="brand-cluster">
+        <div class="brand-logo" title="Argus Institutional Terminal v4.2">
+          <span class="brand-amber-block">A</span>
+          <span class="brand-title">ARGUS<span class="brand-sub">//TERMINAL</span></span>
+        </div>
+        <div class="ws-telemetry" id="ws-telemetry-pill" title="Real-Time WebSocket Multiplexer Status">
+          <span class="status-dot online" id="ws-status-dot"></span>
+          <span class="ws-status-label" id="ws-status-text">WS: LIVE</span>
+          <span class="ws-tick-rate" id="ws-tick-counter">0 TICKS</span>
+        </div>
+      </div>
+
+      <!-- Iconic Bloomberg Amber <GO> Command Bar -->
+      <div class="command-bar-wrapper">
+        <form id="go-command-form" class="go-command-form" autocomplete="off">
+          <label for="go-command-input" class="cmd-prompt-prefix">CMD&gt;</label>
+          <input
+            id="go-command-input"
+            type="text"
+            class="go-command-input"
+            placeholder="BTC-USD <GO> | ETH | PORT | SQL | DEPTH | NEWS | HELP (Press / or Cmd+K)"
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="Bloomberg Command Line Input"
+          >
+          <div class="cmd-quick-chips" aria-label="Quick Command Chips">
+            <button type="button" class="cmd-chip" data-cmd="BTC-USD <GO>">BTC</button>
+            <button type="button" class="cmd-chip" data-cmd="ETH-USD <GO>">ETH</button>
+            <button type="button" class="cmd-chip" data-cmd="NVDA-EQ <GO>">NVDA</button>
+            <button type="button" class="cmd-chip" data-cmd="XAU-USD <GO>">XAU</button>
+            <button type="button" class="cmd-chip" data-cmd="SQL <GO>">SQL</button>
+            <button type="button" class="cmd-chip" data-cmd="DEPTH <GO>">DEPTH</button>
+            <button type="button" class="cmd-chip" data-cmd="QUANT <GO>">QUANT</button>
+          </div>
+          <button type="submit" id="go-exec-btn" class="btn-go" title="Execute Terminal Command">&lt;GO&gt;</button>
+          <button type="button" id="cmd-palette-trigger" class="btn-palette" title="Open Command Palette Modal (Cmd+K)">
+            <kbd>⌘K</kbd><span>MENU</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Institutional Account & Live Portfolio Equity Strip -->
+      <div class="header-portfolio-cluster">
+        <div class="account-selector-wrap">
+          <label for="account-select" class="meta-label">DESK</label>
+          <select id="account-select" class="account-select" aria-label="Select Institutional Account">
+            <option value="ACC-INST-01">ACC-INST-01 // Alpha Desk</option>
+            <option value="ACC-INST-02">ACC-INST-02 // Macro Quant</option>
+          </select>
+        </div>
+
+        <div class="portfolio-pill">
+          <div class="metric-cell">
+            <span class="meta-label">NAV / EQUITY</span>
+            <span class="metric-val" id="header-equity">$10,000,000.00</span>
+          </div>
+          <div class="metric-cell">
+            <span class="meta-label">FREE CASH</span>
+            <span class="metric-val" id="header-cash">$8,500,000.00</span>
+          </div>
+          <div class="metric-cell">
+            <span class="meta-label">UNREALIZED PNL</span>
+            <span class="metric-val pnl-pos" id="header-upnl">+$0.00</span>
+          </div>
+        </div>
+
+        <div class="clock-cluster" aria-label="World Market Clocks">
+          <div class="clock-row">
+            <span class="clock-zone">UTC</span>
+            <span class="clock-time" id="clock-utc">00:00:00</span>
+          </div>
+          <div class="clock-row">
+            <span class="clock-zone amber">WIB</span>
+            <span class="clock-time" id="clock-wib">07:00:00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNCTION KEY BAR & MINI MACRO TAPE -->
+    <nav class="fkey-bar" aria-label="Bloomberg Function Key Shortcuts">
+      <div class="fkey-group">
+        <button type="button" class="fkey-btn" data-fkey="F1" data-action="help">
+          <kbd>F1</kbd><span>HELP / DOCS</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="F2" data-action="toggle-chart-mode">
+          <kbd>F2</kbd><span>CHART / DEPTH</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="F3" data-action="focus-order">
+          <kbd>F3</kbd><span>ORDER TICKET</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="F4" data-action="tab-sql">
+          <kbd>F4</kbd><span>SQL CONSOLE</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="F5" data-action="tab-news">
+          <kbd>F5</kbd><span>NEWS WIRE</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="F6" data-action="cycle-layout">
+          <kbd>F6</kbd><span>LAYOUT TILE</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="F7" data-action="test-webhook">
+          <kbd>F7</kbd><span>WEBHOOK PING</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="F8" data-action="tab-quant">
+          <kbd>F8</kbd><span>QUANT &amp; ALGO</span>
+        </button>
+        <button type="button" class="fkey-btn" data-fkey="CMD+K" data-action="open-palette">
+          <kbd>⌘K</kbd><span>COMMAND PALETTE</span>
+        </button>
+      </div>
+      <div class="macro-ribbon" id="macro-ribbon" aria-live="off">
+        <span class="ribbon-tag">LIVE WIRE //</span>
+        <span class="ribbon-headline" id="ribbon-headline-text">ARGUS MATCHING ENGINE INITIALIZED — FIFO L2 PRICE-TIME PRIORITY ACTIVE</span>
+      </div>
+    </nav>
+  </header>
+
+  <!-- MULTI-PANE INSTITUTIONAL WORKSPACE GRID -->
+  <main id="main-workspace" class="terminal-workspace workspace-grid" data-layout="standard">
+
+    <!-- PANE 1: LEFT WATCHLIST & CROSS-ASSET TELEMETRY -->
+    <section class="pane pane-watchlist" aria-labelledby="pane-watchlist-title">
+      <header class="pane-header">
+        <div class="pane-title-group">
+          <span class="pane-index">P1</span>
+          <h2 id="pane-watchlist-title" class="pane-title">MARKET WATCH // CROSS-ASSET</h2>
+        </div>
+        <div class="pane-controls" role="group" aria-label="Asset Class Filter">
+          <button type="button" class="mini-filter-btn active" data-asset-filter="ALL">ALL</button>
+          <button type="button" class="mini-filter-btn" data-asset-filter="CRYPTO">CRYPTO</button>
+          <button type="button" class="mini-filter-btn" data-asset-filter="EQUITY">EQ/FX/CMD</button>
+        </div>
+      </header>
+
+      <!-- Responsive Table Wrapper (modern-web-guidance: responsive-table) -->
+      <div tabindex="0" role="region" aria-labelledby="watchlist-table-caption" class="table-wrapper watchlist-table-wrapper">
+        <table id="watchlist-table" class="data-table watchlist-table">
+          <caption id="watchlist-table-caption" class="sr-only">Live Cross-Asset Institutional Watchlist</caption>
+          <thead>
+            <tr>
+              <th scope="col">INSTRUMENT</th>
+              <th scope="col" class="num-col">LAST PX</th>
+              <th scope="col" class="num-col">24H %</th>
+              <th scope="col" class="num-col">VWAP</th>
+            </tr>
+          </thead>
+          <tbody id="watchlist-tbody">
+            <!-- Dynamically hydrated via REST /api/tickers & WebSocket TICK -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Active Instrument Institutional Telemetry Card -->
+      <div class="instrument-telemetry-card" id="instrument-telemetry-card" aria-label="Selected Instrument Microstructure Telemetry">
+        <div class="telemetry-header">
+          <span class="telemetry-symbol" id="tele-symbol">BTC-USD</span>
+          <span class="telemetry-class-badge" id="tele-class">CRYPTO SPOT</span>
+          <span class="telemetry-spread-bps" id="tele-spread-bps">SPREAD: 0.5 bps</span>
+        </div>
+        <div class="telemetry-grid">
+          <div class="tele-item">
+            <span class="tele-label">24H HIGH</span>
+            <span class="tele-val" id="tele-high">95,420.00</span>
+          </div>
+          <div class="tele-item">
+            <span class="tele-label">24H LOW</span>
+            <span class="tele-val" id="tele-low">93,110.00</span>
+          </div>
+          <div class="tele-item">
+            <span class="tele-label">24H VOL</span>
+            <span class="tele-val" id="tele-vol">14,820.5</span>
+          </div>
+          <div class="tele-item">
+            <span class="tele-label">SESSION VWAP</span>
+            <span class="tele-val cyan" id="tele-vwap">94,485.20</span>
+          </div>
+          <div class="tele-item">
+            <span class="tele-label">BEST BID</span>
+            <span class="tele-val up" id="tele-bid">94,499.50</span>
+          </div>
+          <div class="tele-item">
+            <span class="tele-label">BEST ASK</span>
+            <span class="tele-val down" id="tele-ask">94,500.50</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE 2: CENTER PRIMARY CANVAS CHART (OHLCV CANDLES + L2 CUMULATIVE MARKET DEPTH) -->
+    <section class="pane pane-chart" aria-labelledby="pane-chart-title">
+      <header class="pane-header chart-pane-header">
+        <div class="chart-instrument-banner">
+          <span class="pane-index">P2</span>
+          <h2 id="pane-chart-title" class="chart-symbol-heading">
+            <span id="active-symbol-badge" class="active-symbol-badge">BTC-USD</span>
+            <span id="active-symbol-name" class="active-symbol-sub">Bitcoin Institutional Spot</span>
+          </h2>
+          <div class="active-price-cluster">
+            <span id="active-symbol-price" class="active-live-px">94,500.00</span>
+            <span id="active-symbol-change" class="active-live-chg pnl-pos">+0.00 (+0.00%)</span>
+          </div>
+        </div>
+
+        <div class="chart-toolbar" role="toolbar" aria-label="Chart Display Mode and Overlays">
+          <div class="btn-segmented" role="group" aria-label="Canvas View Mode">
+            <button type="button" class="chart-mode-btn active" data-chart-mode="CANDLES">CANDLES</button>
+            <button type="button" class="chart-mode-btn" data-chart-mode="DEPTH">DEPTH</button>
+            <button type="button" class="chart-mode-btn" data-chart-mode="SPLIT">SPLIT BOTH</button>
+          </div>
+          <div class="btn-segmented" role="group" aria-label="Technical Overlays">
+            <button type="button" class="overlay-toggle-btn active" id="toggle-ema-btn" data-overlay="ema" title="Toggle EMA 9 &amp; EMA 21">EMA 9/21</button>
+            <button type="button" class="overlay-toggle-btn active" id="toggle-vwap-btn" data-overlay="vwap" title="Toggle Session VWAP Line">VWAP</button>
+            <button type="button" class="overlay-toggle-btn active" id="toggle-vol-btn" data-overlay="volume" title="Toggle Volume Histogram">VOL</button>
+            <button type="button" class="overlay-toggle-btn" id="chart-reset-btn" title="Reset Chart Zoom &amp; Pan">FIT</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Interactive Crosshair HUD Overlay -->
+      <div class="chart-hud-strip" id="chart-hud">
+        <span class="hud-item"><span class="hud-lbl">T:</span> <strong id="hud-time">LIVE</strong></span>
+        <span class="hud-item"><span class="hud-lbl">O:</span> <strong id="hud-open">--</strong></span>
+        <span class="hud-item"><span class="hud-lbl">H:</span> <strong id="hud-high">--</strong></span>
+        <span class="hud-item"><span class="hud-lbl">L:</span> <strong id="hud-low">--</strong></span>
+        <span class="hud-item"><span class="hud-lbl">C:</span> <strong id="hud-close">--</strong></span>
+        <span class="hud-item"><span class="hud-lbl">V:</span> <strong id="hud-vol">--</strong></span>
+        <span class="hud-item ema9-hud"><span class="hud-lbl">EMA9:</span> <strong id="hud-ema9">--</strong></span>
+        <span class="hud-item ema21-hud"><span class="hud-lbl">EMA21:</span> <strong id="hud-ema21">--</strong></span>
+      </div>
+
+      <!-- High-DPI HTML5 Canvas Stage -->
+      <div class="canvas-stage" id="canvas-stage">
+        <canvas id="primary-chart-canvas" aria-label="Institutional Financial Chart and L2 Market Depth Canvas"></canvas>
+      </div>
+    </section>
+
+    <!-- PANE 3: RIGHT L2 ORDERBOOK & TIME-AND-SALES EXECUTION TAPE -->
+    <section class="pane pane-orderbook" aria-labelledby="pane-orderbook-title">
+      <header class="pane-header">
+        <div class="pane-title-group">
+          <span class="pane-index">P3</span>
+          <h2 id="pane-orderbook-title" class="pane-title">L2 BOOK &amp; TIME/SALES</h2>
+        </div>
+        <div class="imbalance-pill" title="L2 Orderbook Bid vs Ask Liquidity Imbalance">
+          <span class="imb-bid-label" id="imb-bid-pct">B: 50%</span>
+          <div class="imbalance-track">
+            <div class="imbalance-fill-bid" id="imbalance-fill-bid" style="width: 50%"></div>
+          </div>
+          <span class="imb-ask-label" id="imb-ask-pct">A: 50%</span>
+        </div>
+      </header>
+
+      <div class="orderbook-tape-split">
+        <!-- L2 Limit Orderbook Ladder -->
+        <div class="orderbook-ladder" aria-label="Level 2 Limit Orderbook Ladder (Click row to prefill order price)">
+          <div class="ob-col-headers">
+            <span>PRICE (USD)</span>
+            <span class="num-col">SIZE</span>
+            <span class="num-col">TOTAL</span>
+          </div>
+
+          <!-- Asks (Crimson, lowest ask at bottom next to spread) -->
+          <div id="orderbook-asks" class="ob-side ob-asks" role="list" aria-label="Orderbook Asks"></div>
+
+          <!-- Mid-Price & Spread Laser Banner -->
+          <div id="orderbook-spread-banner" class="ob-spread-banner" title="Click to set Mid-Price in Order Entry Ticket">
+            <span class="ob-mid-price" id="ob-mid-price">94,500.00</span>
+            <span class="ob-spread-val" id="ob-spread-val">SPREAD: 0.50 (0.5 bps)</span>
+          </div>
+
+          <!-- Bids (Emerald, highest bid at top next to spread) -->
+          <div id="orderbook-bids" class="ob-side ob-bids" role="list" aria-label="Orderbook Bids"></div>
+        </div>
+
+        <!-- Live Time & Sales Execution Tape -->
+        <div class="time-sales-panel" aria-label="Live Time and Sales Trade Tape">
+          <div class="sub-pane-header">
+            <span class="sub-pane-title">TIME &amp; SALES TAPE</span>
+            <span class="tape-count-badge" id="tape-count">0 PRINTS</span>
+          </div>
+          <div class="ob-col-headers tape-headers">
+            <span>TIME (MS)</span>
+            <span>SIDE</span>
+            <span class="num-col">PRICE</span>
+            <span class="num-col">SIZE</span>
+          </div>
+          <div id="trades-tape-list" class="trades-tape-list tape-list" role="log" aria-live="off"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE 4: BOTTOM LEFT INSTITUTIONAL ORDER ENTRY TICKET -->
+    <section class="pane pane-order-ticket" aria-labelledby="pane-order-title">
+      <header class="pane-header">
+        <div class="pane-title-group">
+          <span class="pane-index">P4</span>
+          <h2 id="pane-order-title" class="pane-title">ORDER ENTRY // DMA ROUTER</h2>
+        </div>
+        <span class="ticket-active-sym" id="ticket-symbol-label">BTC-USD</span>
+      </header>
+
+      <form id="order-entry-form" class="order-ticket-form" autocomplete="off">
+        <!-- BUY / SELL Toggle -->
+        <div class="ticket-side-toggle" role="group" aria-label="Order Side">
+          <button type="button" id="side-buy-btn" class="side-btn side-buy active" data-side="BUY">
+            BUY // BID
+          </button>
+          <button type="button" id="side-sell-btn" class="side-btn side-sell" data-side="SELL">
+            SELL // ASK
+          </button>
+        </div>
+
+        <!-- LIMIT / MARKET Tabs -->
+        <div class="ticket-type-tabs" role="group" aria-label="Order Execution Type">
+          <button type="button" class="type-btn active" data-type="LIMIT">LIMIT (FIFO)</button>
+          <button type="button" class="type-btn" data-type="MARKET">MARKET (SWEEP)</button>
+        </div>
+
+        <!-- Limit Price Input + Quick Price Anchors -->
+        <div class="ticket-field-group" id="order-price-group">
+          <div class="field-label-row">
+            <label for="order-price">PRICE (<span id="price-ccy-label">USD</span>)</label>
+            <div class="quick-px-btns">
+              <button type="button" class="q-px-btn" data-px-anchor="BID" title="Set to Best Bid">BID</button>
+              <button type="button" class="q-px-btn" data-px-anchor="MID" title="Set to Mid Price">MID</button>
+              <button type="button" class="q-px-btn" data-px-anchor="ASK" title="Set to Best Ask">ASK</button>
+            </div>
+          </div>
+          <input id="order-price" name="price" type="number" step="any" min="0" class="ticket-input" value="94500.00" aria-label="Order Limit Price" required>
+        </div>
+
+        <!-- Quantity / Size Input + Quick Allocation Buttons -->
+        <div class="ticket-field-group">
+          <div class="field-label-row">
+            <label for="order-size">QUANTITY (<span id="size-sym-label">BTC</span>)</label>
+            <div class="quick-size-btns">
+              <button type="button" class="q-sz-btn" data-size-pct="0.25">25%</button>
+              <button type="button" class="q-sz-btn" data-size-pct="0.50">50%</button>
+              <button type="button" class="q-sz-btn" data-size-pct="1.00">MAX</button>
+            </div>
+          </div>
+          <input id="order-size" name="size" type="number" step="any" min="0.0001" class="ticket-input" value="1.0" aria-label="Order Quantity Size" required>
+        </div>
+
+        <!-- Client Tag & Pre-Trade Summary -->
+        <div class="ticket-row-compact">
+          <div class="ticket-field-group half">
+            <label for="order-client-tag">CLIENT / ALGO TAG</label>
+            <input id="order-client-tag" name="clientTag" type="text" class="ticket-input" value="ALPHA-DMA-01" placeholder="TAG" aria-label="Client or Algo Execution Tag">
+          </div>
+          <div class="ticket-field-group half">
+            <span class="field-static-label">EST. NOTIONAL</span>
+            <div class="ticket-notional-readout" id="order-notional">$94,500.00</div>
+          </div>
+        </div>
+
+        <button type="submit" id="order-submit-btn" class="btn-submit-order buy-mode">
+          TRANSMIT BUY LIMIT &lt;GO&gt;
+        </button>
+      </form>
+    </section>
+
+    <!-- PANE 5: BOTTOM RIGHT TABBED INSTITUTIONAL BLOTTER (POSITIONS / ORDERS / SQL / NEWS) -->
+    <section class="pane pane-blotter" aria-labelledby="pane-blotter-title">
+      <header class="pane-header blotter-header">
+        <div class="pane-title-group">
+          <span class="pane-index">P5</span>
+          <h2 id="pane-blotter-title" class="sr-only">Institutional Blotter, SQL Analytics &amp; News Wire</h2>
+          <div class="blotter-tabs" role="tablist" aria-label="Institutional Blotter Views">
+            <button type="button" role="tab" aria-selected="true" class="blotter-tab active" data-tab="positions" id="tab-btn-positions">
+              POSITIONS &amp; PNL <span class="tab-badge" id="badge-positions-count">0</span>
+            </button>
+            <button type="button" role="tab" aria-selected="false" class="blotter-tab" data-tab="orders" id="tab-btn-orders">
+              ORDERS &amp; FILLS <span class="tab-badge" id="badge-orders-count">0</span>
+            </button>
+            <button type="button" role="tab" aria-selected="false" class="blotter-tab" data-tab="sql" id="tab-btn-sql">
+              SQL ANALYTICS <span class="tab-badge amber">SQLite</span>
+            </button>
+            <button type="button" role="tab" aria-selected="false" class="blotter-tab" data-tab="news" id="tab-btn-news">
+              MACRO NEWS WIRE <span class="tab-badge" id="badge-news-count">0</span>
+            </button>
+            <button type="button" role="tab" aria-selected="false" class="blotter-tab" data-tab="quant" id="tab-btn-quant">
+              QUANT &amp; ALGO [F8] <span class="tab-badge amber" id="badge-quant-regime">MC-10K</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="blotter-quick-meta" id="blotter-quick-meta">
+          <span>EXPOSURE: <strong id="blotter-total-exposure">$0.00</strong></span>
+          <span>MARGIN USED: <strong id="blotter-margin-used">$0.00</strong></span>
+        </div>
+      </header>
+
+      <!-- TAB 1: POSITIONS & PNL -->
+      <div class="blotter-panel active" id="tab-positions" role="tabpanel" aria-labelledby="tab-btn-positions">
+        <div tabindex="0" role="region" aria-labelledby="positions-table-caption" class="table-wrapper blotter-table-wrapper">
+          <table id="positions-table" class="data-table positions-table">
+            <caption id="positions-table-caption" class="sr-only">Real-Time Mark-to-Market Positions and Unrealized PnL</caption>
+            <thead>
+              <tr>
+                <th scope="col">SYMBOL</th>
+                <th scope="col">SIDE</th>
+                <th scope="col" class="num-col">QTY</th>
+                <th scope="col" class="num-col">AVG ENTRY</th>
+                <th scope="col" class="num-col">MARK PX</th>
+                <th scope="col" class="num-col">NOTIONAL</th>
+                <th scope="col" class="num-col">UNREALIZED PNL</th>
+                <th scope="col" class="num-col">ROE %</th>
+                <th scope="col" class="action-col">ACTION</th>
+              </tr>
+            </thead>
+            <tbody id="positions-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 2: OPEN ORDERS & FILLS -->
+      <div class="blotter-panel" id="tab-orders" role="tabpanel" aria-labelledby="tab-btn-orders" hidden>
+        <div class="blotter-sub-toolbar">
+          <div class="search-input-wrap">
+            <label for="orders-search-input" class="cmd-prompt-prefix">SEARCH&gt;</label>
+            <input
+              id="orders-search-input"
+              type="search"
+              class="blotter-search-input"
+              placeholder="Filter orders by symbol, status, or client tag (/api/orders/search?q=)..."
+              aria-label="Search Open Orders and Fills"
+            >
+          </div>
+          <div class="orders-toolbar-actions">
+            <button type="button" id="refresh-orders-btn" class="btn-mini">REFRESH</button>
+            <button type="button" id="cancel-all-orders-btn" class="btn-mini danger">CANCEL ALL OPEN</button>
+          </div>
+        </div>
+
+        <div tabindex="0" role="region" aria-labelledby="orders-table-caption" class="table-wrapper blotter-table-wrapper">
+          <table id="orders-table" class="data-table orders-table">
+            <caption id="orders-table-caption" class="sr-only">Institutional Open Orders and Recent Execution Fills</caption>
+            <thead>
+              <tr>
+                <th scope="col">ORDER ID</th>
+                <th scope="col">SYMBOL</th>
+                <th scope="col">SIDE</th>
+                <th scope="col">TYPE</th>
+                <th scope="col" class="num-col">PRICE</th>
+                <th scope="col" class="num-col">QTY / FILLED</th>
+                <th scope="col">STATUS</th>
+                <th scope="col">TAG / TIME</th>
+                <th scope="col" class="action-col">ACTION</th>
+              </tr>
+            </thead>
+            <tbody id="orders-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 3: SQL ANALYTICS CONSOLE -->
+      <div class="blotter-panel" id="tab-sql" role="tabpanel" aria-labelledby="tab-btn-sql" hidden>
+        <div class="sql-console-bar">
+          <div class="sql-presets-row" role="group" aria-label="Preset Institutional SQL Queries">
+            <span class="meta-label">PRESETS:</span>
+            <button type="button" class="sql-preset-btn active" data-sql-preset="notional">1. Trade Notional by Symbol</button>
+            <button type="button" class="sql-preset-btn" data-sql-preset="instruments">2. Cross-Asset VWAP &amp; Vol</button>
+            <button type="button" class="sql-preset-btn" data-sql-preset="positions">3. MTM Position Exposure</button>
+            <button type="button" class="sql-preset-btn" data-sql-preset="orders">4. Order Audit Blotter</button>
+            <button type="button" class="sql-preset-btn" data-sql-preset="candles">5. OHLCV Bar Stats</button>
+          </div>
+          <div class="sql-editor-row">
+            <label for="sql-query-input" class="sr-only">SQLite Analytical Query Editor</label>
+            <textarea
+              id="sql-query-input"
+              class="sql-query-input"
+              rows="2"
+              spellcheck="false"
+              aria-label="SQLite Analytical Query Editor"
+            >SELECT symbol, count(*) AS trades, round(sum(size * price), 2) AS notional, round(avg(price), 2) AS avg_px FROM trades GROUP BY symbol ORDER BY notional DESC;</textarea>
+            <div class="sql-exec-col">
+              <button type="button" id="sql-run-btn" class="btn-go sql-go-btn">EXEC SQL &lt;GO&gt;</button>
+              <span class="sql-telemetry-badge" id="sql-stats-badge">READY</span>
+            </div>
+          </div>
+        </div>
+
+        <div tabindex="0" role="region" aria-labelledby="sql-table-caption" class="table-wrapper sql-table-wrapper">
+          <table id="sql-results-table" class="data-table sql-table">
+            <caption id="sql-table-caption" class="sr-only">SQLite In-Process Analytical Query Results</caption>
+            <thead id="sql-thead">
+              <tr>
+                <th scope="col">SYMBOL</th>
+                <th scope="col">TRADES</th>
+                <th scope="col">NOTIONAL</th>
+                <th scope="col">AVG_PX</th>
+              </tr>
+            </thead>
+            <tbody id="sql-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 4: MACRO NEWS WIRE -->
+      <div class="blotter-panel" id="tab-news" role="tabpanel" aria-labelledby="tab-btn-news" hidden>
+        <div id="news-wire-list" class="news-wire-list" role="feed" aria-label="Real-Time Institutional Macro News Wire"></div>
+      </div>
+
+      <!-- TAB 5: QUANT RISK, MONTE CARLO VaR/CVaR, VPIN TOXICITY & ALGO/BACKTEST ENGINE -->
+      <div class="blotter-panel" id="tab-quant" role="tabpanel" aria-labelledby="tab-btn-quant" hidden>
+        <div class="quant-blotter-split">
+          <!-- Left Sub-Card: Live Monte Carlo VaR/CVaR, VPIN Toxicity, OBI Skew, Micro-Price & AI Quant Copilot -->
+          <div class="quant-subcard quant-risk-card">
+            <div class="quant-card-header">
+              <span class="quant-card-title">10,000-PATH MONTE CARLO VaR / CVaR &amp; MICROSTRUCTURE ALPHA</span>
+              <button type="button" id="quant-refresh-btn" class="btn-mini">RECOMPUTE MC &lt;GO&gt;</button>
+            </div>
+
+            <div class="quant-metrics-grid">
+              <div class="quant-metric-box">
+                <span class="quant-lbl">MC 1D VaR (95%)</span>
+                <strong class="quant-val amber" id="quant-var95">$38,420.00</strong>
+              </div>
+              <div class="quant-metric-box">
+                <span class="quant-lbl">MC 1D VaR (99%)</span>
+                <strong class="quant-val down" id="quant-var99">$54,180.00</strong>
+              </div>
+              <div class="quant-metric-box">
+                <span class="quant-lbl">CVaR 99% (EXP. SHORTFALL)</span>
+                <strong class="quant-val down" id="quant-cvar99">$63,910.00</strong>
+              </div>
+              <div class="quant-metric-box">
+                <span class="quant-lbl">VPIN FLOW TOXICITY</span>
+                <strong class="quant-val cyan" id="quant-vpin">0.284 (NORMAL)</strong>
+              </div>
+              <div class="quant-metric-box">
+                <span class="quant-lbl">L2 OBI SKEW</span>
+                <strong class="quant-val up" id="quant-obi">+12.4%</strong>
+              </div>
+              <div class="quant-metric-box">
+                <span class="quant-lbl">STOIKOV MICRO-PRICE</span>
+                <strong class="quant-val cyan" id="quant-micro-price">94,500.12</strong>
+              </div>
+              <div class="quant-metric-box">
+                <span class="quant-lbl">KYLE'S LAMBDA (&lambda;)</span>
+                <strong class="quant-val" id="quant-kyle-lambda">1.45 bps/$100k</strong>
+              </div>
+              <div class="quant-metric-box">
+                <span class="quant-lbl">KELLY CRITERION (f* / ½f*)</span>
+                <strong class="quant-val up" id="quant-kelly">18.4% / 9.2%</strong>
+              </div>
+            </div>
+
+            <!-- AI Quant Copilot Signal Banner -->
+            <div class="quant-copilot-banner" id="quant-copilot-banner">
+              <div class="copilot-top-row">
+                <span class="copilot-badge" id="quant-copilot-regime">AI QUANT COPILOT // REGIME: NORMAL</span>
+                <span class="copilot-rec-algo" id="quant-copilot-algo">ROUTER: AVELLANEDA_STOIKOV</span>
+              </div>
+              <div class="copilot-headline" id="quant-copilot-headline">
+                Synthesizing 10,000 correlated Cholesky Monte Carlo paths &amp; Easley-Lopez de Prado-O'Hara VPIN toxicity...
+              </div>
+              <div class="copilot-summary" id="quant-copilot-summary">
+                Parametric &amp; Monte Carlo tail risk within 5% NAV guardrail. Half-Kelly optimal allocation ready.
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Sub-Card: Algo Execution & Strategy Backtester Launcher -->
+          <div class="quant-subcard quant-algo-card">
+            <div class="quant-card-header">
+              <span class="quant-card-title">ALGO EXECUTION &amp; OHLCV STRATEGY BACKTESTER</span>
+              <span class="quant-slab-pill" id="quant-slab-pill" title="TypedArray Slab Orderbook Arena Telemetry">SLAB L3: 1.84M OPS/S (0 GC)</span>
+            </div>
+
+            <!-- Algorithmic Execution Quick Launchers -->
+            <div class="algo-launcher-row" role="group" aria-label="Algorithmic Execution Launchers">
+              <button type="button" class="btn-mini algo-launch-btn" data-algo-type="TWAP">LAUNCH TWAP</button>
+              <button type="button" class="btn-mini algo-launch-btn" data-algo-type="VWAP">LAUNCH VWAP</button>
+              <button type="button" class="btn-mini algo-launch-btn" data-algo-type="AVELLANEDA_STOIKOV">AVELLANEDA-STOIKOV MM</button>
+              <button type="button" class="btn-mini algo-launch-btn" data-algo-type="ICEBERG">LAUNCH ICEBERG</button>
+            </div>
+
+            <!-- Historical Strategy Backtester Controls -->
+            <div class="backtest-controls-row">
+              <label for="quant-backtest-strategy" class="meta-label">STRATEGY</label>
+              <select id="quant-backtest-strategy" class="account-select backtest-select" aria-label="Select Backtest Strategy">
+                <option value="EMA_CROSS">EMA_CROSS // Institutional Trend</option>
+                <option value="MEAN_REVERSION_BOLLINGER">MEAN_REVERSION_BOLLINGER // StatArb Z-Score</option>
+                <option value="AVELLANEDA_MM">AVELLANEDA_MM // Optimal Inventory MM</option>
+              </select>
+              <button type="button" id="run-backtest-btn" class="btn-go btn-backtest-go">RUN BACKTEST &lt;GO&gt;</button>
+            </div>
+
+            <!-- Backtest Telemetry Readout -->
+            <div class="backtest-metrics-strip" id="backtest-metrics-strip">
+              <div class="bt-cell">
+                <span class="quant-lbl">SHARPE</span>
+                <strong class="quant-val up" id="bt-sharpe">2.42</strong>
+              </div>
+              <div class="bt-cell">
+                <span class="quant-lbl">SORTINO</span>
+                <strong class="quant-val up" id="bt-sortino">3.58</strong>
+              </div>
+              <div class="bt-cell">
+                <span class="quant-lbl">MAX DD %</span>
+                <strong class="quant-val down" id="bt-maxdd">-1.84%</strong>
+              </div>
+              <div class="bt-cell">
+                <span class="quant-lbl">RETURN %</span>
+                <strong class="quant-val up" id="bt-return">+6.45%</strong>
+              </div>
+              <div class="bt-cell">
+                <span class="quant-lbl">WIN RATE / TRADES</span>
+                <strong class="quant-val cyan" id="bt-winrate">64.2% (18)</strong>
+              </div>
+            </div>
+
+            <!-- Active Algo Executions Mini-Feed -->
+            <div class="algo-active-list" id="quant-algo-list" aria-label="Active Algorithmic Executions"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- COMMAND PALETTE & <GO> FUNCTION DIRECTORY MODAL (modern-web-guidance: light-dismiss-a-dialog) -->
+  <dialog id="cmd-dialog" closedby="any" aria-labelledby="cmd-dialog-title" class="cmd-dialog">
+    <div class="cmd-dialog-inner">
+      <header class="cmd-dialog-header">
+        <div class="cmd-dialog-title-wrap">
+          <span class="brand-amber-block">CMD</span>
+          <h2 id="cmd-dialog-title">ARGUS // BLOOMBERG &lt;GO&gt; COMMAND PALETTE</h2>
+        </div>
+        <form method="dialog">
+          <button type="submit" class="dialog-close-btn" aria-label="Close Command Palette">ESC // CLOSE</button>
+        </form>
+      </header>
+
+      <div class="cmd-dialog-search-bar">
+        <label for="palette-search-input" class="cmd-prompt-prefix">&gt;&gt;</label>
+        <input
+          id="palette-search-input"
+          type="text"
+          class="palette-search-input"
+          placeholder="Filter terminal commands, tickers, or functions (e.g. BTC-USD, DEPTH, SQL, CANCEL ALL)..."
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Filter Terminal Commands and Tickers"
+        >
+      </div>
+
+      <div class="cmd-dialog-body">
+        <div id="palette-command-list" class="palette-command-list" role="listbox" aria-label="Available Terminal Commands">
+          <!-- Populated dynamically by components.js / app.js -->
+        </div>
+      </div>
+
+      <footer class="cmd-dialog-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+        <span><kbd>ENTER</kbd> Execute <strong>&lt;GO&gt;</strong></span>
+        <span><kbd>F1</kbd>–<kbd>F7</kbd> Function Hotkeys</span>
+        <span>Click backdrop or press <kbd>ESC</kbd> to dismiss</span>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- TOAST NOTIFICATION STACK -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- SCRIPTS -->
+  <script src="/js/charts.js"></script>
+  <script src="/js/components.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

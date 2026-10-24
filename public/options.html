@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="en" class="dark-terminal">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARGUS // OPTIONS GREEKS, 3D SVI VOL SURFACE, FIX 4.4 / SBE &amp; SOR WORKSTATION</title>
+  <style>
+    :root {
+      --bg-obsidian: #06080c;
+      --bg-panel: #0b0f17;
+      --bg-panel-alt: #0f1520;
+      --bg-elevated: #141c2b;
+      --border-hairline: #1c2638;
+      --border-focus: #f59e0b;
+      --text-primary: #e8edf5;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --amber: #f59e0b;
+      --amber-dim: rgba(245, 158, 11, 0.14);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.14);
+      --crimson: #f43f5e;
+      --crimson-dim: rgba(244, 63, 94, 0.14);
+      --cyan: #06b6d4;
+      --cyan-dim: rgba(6, 182, 212, 0.14);
+      --violet: #8b5cf6;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Mono', Consolas, monospace;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background-color: var(--bg-obsidian);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.4;
+      font-variant-numeric: tabular-nums;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* TOP COMMAND HEADER */
+    .top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 14px;
+      background: linear-gradient(180deg, #0d131f 0%, #080b11 100%);
+      border-bottom: 1px solid var(--border-hairline);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      flex-wrap: wrap;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-badge {
+      background: var(--amber);
+      color: #000;
+      font-weight: 800;
+      padding: 3px 7px;
+      border-radius: 2px;
+      letter-spacing: 0.06em;
+    }
+
+    .brand-title {
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      color: var(--text-primary);
+    }
+
+    .brand-sub {
+      color: var(--amber);
+      font-weight: 600;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .ctrl-label {
+      color: var(--text-muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    select, input[type="number"], input[type="text"] {
+      background: var(--bg-obsidian);
+      color: var(--text-primary);
+      border: 1px solid var(--border-hairline);
+      padding: 4px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      border-radius: 2px;
+    }
+
+    select:focus, input:focus, button:focus-visible {
+      outline: 1px solid var(--amber);
+      border-color: var(--amber);
+    }
+
+    .btn {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-hairline);
+      padding: 4px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .btn:hover {
+      border-color: var(--amber);
+      color: var(--amber);
+    }
+
+    .btn.active, .btn-amber {
+      background: var(--amber);
+      color: #04060a;
+      border-color: var(--amber);
+      font-weight: 700;
+    }
+
+    .btn-amber:hover {
+      background: #fbbf24;
+      color: #04060a;
+    }
+
+    .btn-cyan {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    .btn-emerald {
+      background: var(--emerald-dim);
+      color: var(--emerald);
+      border-color: var(--emerald);
+    }
+
+    .btn-crimson {
+      background: var(--crimson-dim);
+      color: var(--crimson);
+      border-color: var(--crimson);
+    }
+
+    /* PORTFOLIO GREEKS TELEMETRY STRIP */
+    .greeks-ribbon {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 1px;
+      background: var(--border-hairline);
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .greek-card {
+      background: var(--bg-panel);
+      padding: 7px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .greek-card .lbl {
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+    }
+
+    .greek-card .val {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .val.amber { color: var(--amber); }
+    .val.emerald { color: var(--emerald); }
+    .val.cyan { color: var(--cyan); }
+    .val.crimson { color: var(--crimson); }
+
+    /* 4-PANE INSTITUTIONAL WORKSPACE GRID */
+    .workstation-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.15fr;
+      grid-template-rows: auto auto;
+      gap: 1px;
+      background: var(--border-hairline);
+      min-height: calc(100vh - 96px);
+    }
+
+    @media (max-width: 1200px) {
+      .workstation-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .pane {
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 12px;
+      background: var(--bg-panel-alt);
+      border-bottom: 1px solid var(--border-hairline);
+      flex-wrap: wrap;
+    }
+
+    .pane-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pane-id {
+      background: var(--amber-dim);
+      color: var(--amber);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 2px;
+    }
+
+    .pane-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-primary);
+    }
+
+    .pane-body {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+    }
+
+    /* PANE A: 3D VOL SURFACE & GREEKS PROFILE */
+    .canvas-split {
+      display: grid;
+      grid-template-columns: 1.35fr 0.85fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 820px) {
+      .canvas-split {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .canvas-box {
+      background: var(--bg-obsidian);
+      border: 1px solid var(--border-hairline);
+      position: relative;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .canvas-box canvas {
+      display: block;
+      width: 100%;
+      height: 290px;
+      cursor: grab;
+    }
+
+    .canvas-box canvas:active {
+      cursor: grabbing;
+    }
+
+    .canvas-overlay-meta {
+      position: absolute;
+      top: 7px;
+      left: 9px;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      background: rgba(6, 8, 12, 0.78);
+      padding: 4px 7px;
+      border: 1px solid var(--border-hairline);
+    }
+
+    .surface-controls-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 6px 8px;
+      background: var(--bg-obsidian);
+      border: 1px solid var(--border-hairline);
+      flex-wrap: wrap;
+    }
+
+    /* PANE B: RESPONSIVE STRADDLE OPTIONS CHAIN TABLE (modern-web-guidance: responsive-table) */
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      max-block-size: 275px;
+      container-type: inline-size;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-obsidian);
+    }
+
+    table.chain-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 11px;
+    }
+
+    table.chain-table thead {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: #101726;
+    }
+
+    table.chain-table th,
+    table.chain-table td {
+      padding: 5px 7px;
+      text-align: right;
+      border-bottom: 1px solid #131b2b;
+      white-space: nowrap;
+    }
+
+    table.chain-table th {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    table.chain-table tbody th.strike-col {
+      position: sticky;
+      inset-inline-start: 0;
+      z-index: 1;
+      text-align: center;
+      background: #121a2b;
+      color: var(--amber);
+      font-weight: 700;
+      border-left: 1px solid var(--border-hairline);
+      border-right: 1px solid var(--border-hairline);
+    }
+
+    table.chain-table tr.atm-row {
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    table.chain-table tr:hover td {
+      background: rgba(6, 182, 212, 0.10);
+      cursor: pointer;
+    }
+
+    .call-px { color: var(--emerald); font-weight: 600; }
+    .put-px { color: var(--crimson); font-weight: 600; }
+    .iv-cell { color: var(--cyan); font-weight: 600; }
+
+    /* IV SOLVER BOX */
+    .sub-card {
+      background: var(--bg-obsidian);
+      border: 1px solid var(--border-hairline);
+      padding: 9px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sub-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-hairline);
+      padding-bottom: 5px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+      gap: 7px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .field label {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    /* PANE C: FIX 4.4 & 40-BYTE BINARY SBE INSPECTOR */
+    .wire-box {
+      background: #040609;
+      border: 1px solid var(--border-hairline);
+      padding: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      word-break: break-all;
+      color: var(--amber);
+      line-height: 1.45;
+    }
+
+    .sbe-hex-grid {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 3px;
+      background: #040609;
+      padding: 8px;
+      border: 1px solid var(--border-hairline);
+    }
+
+    .sbe-byte {
+      padding: 3px 2px;
+      text-align: center;
+      font-size: 10px;
+      border-radius: 2px;
+      font-weight: 600;
+    }
+
+    .sbe-hdr { background: rgba(245, 158, 11, 0.16); color: var(--amber); }
+    .sbe-id  { background: rgba(6, 182, 212, 0.16); color: var(--cyan); }
+    .sbe-px  { background: rgba(16, 185, 129, 0.16); color: var(--emerald); }
+    .sbe-qty { background: rgba(139, 92, 246, 0.18); color: #c4b5fd; }
+    .sbe-sym { background: rgba(244, 63, 94, 0.16); color: #fda4af; }
+
+    /* PANE D: SOR & ARBITRAGE */
+    .venue-bar-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .venue-row {
+      display: grid;
+      grid-template-columns: 115px 1fr 185px;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .venue-track {
+      height: 14px;
+      background: #0d1320;
+      border: 1px solid var(--border-hairline);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .venue-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--emerald));
+    }
+  </style>
+</head>
+<body>
+  <!-- TOP INSTITUTIONAL HEADER -->
+  <header class="top-header" role="banner">
+    <div class="brand-group">
+      <span class="brand-badge">OPT // FIX // SOR</span>
+      <h1 class="brand-title">ARGUS DERIVATIVES, 3D VOLATILITY SURFACE (`SVI`), FIX 4.4 SBE &amp; SMART ORDER ROUTER</h1>
+    </div>
+
+    <div class="header-controls">
+      <label for="opt-symbol-select" class="ctrl-label">UNDERLYING</label>
+      <select id="opt-symbol-select" aria-label="Select Underlying Instrument">
+        <option value="BTC-USD">BTC-USD // Bitcoin Perp &amp; Options</option>
+        <option value="ETH-USD">ETH-USD // Ethereum Options</option>
+        <option value="SOL-USD">SOL-USD // Solana Options</option>
+        <option value="NVDA-EQ">NVDA-EQ // NVIDIA Equity Options</option>
+        <option value="XAU-USD">XAU-USD // Gold Spot Options</option>
+      </select>
+
+      <label for="opt-tenor-select" class="ctrl-label">TENOR</label>
+      <select id="opt-tenor-select" aria-label="Select Expiry Tenor">
+        <option value="7D">7D (Weekly)</option>
+        <option value="14D">14D (Bi-Weekly)</option>
+        <option value="30D" selected>30D (Monthly Benchmark)</option>
+        <option value="90D">90D (Quarterly)</option>
+        <option value="180D">180D (Bi-Annual)</option>
+      </select>
+
+      <button type="button" id="refresh-surface-btn" class="btn btn-amber">REFRESH SURFACE &lt;GO&gt;</button>
+      <a href="/" class="btn" title="Return to Main Argus L2 Workstation">MAIN TERMINAL &lt;GO&gt;</a>
+      <a href="/deck.html" class="btn" title="Open Institutional Pitch Deck">DECK &lt;GO&gt;</a>
+    </div>
+  </header>
+
+  <!-- PORTFOLIO GREEKS & PUT-CALL PARITY SUMMARY RIBBON -->
+  <section class="greeks-ribbon" aria-label="Desk Net Options Greeks and Put-Call Parity Telemetry">
+    <div class="greek-card">
+      <span class="lbl">UNDERLYING SPOT / ATM IV</span>
+      <span class="val amber" id="hdr-spot-iv">$94,500.00 // 56.40%</span>
+    </div>
+    <div class="greek-card">
+      <span class="lbl">DESK NET DELTA (Δ)</span>
+      <span class="val emerald" id="hdr-net-delta">+4.1250 ($389,812)</span>
+    </div>
+    <div class="greek-card">
+      <span class="lbl">DESK NET GAMMA (Γ)</span>
+      <span class="val cyan" id="hdr-net-gamma">+0.000420</span>
+    </div>
+    <div class="greek-card">
+      <span class="lbl">DESK NET VEGA (V / 1% VOL)</span>
+      <span class="val amber" id="hdr-net-vega">+$1,482.50</span>
+    </div>
+    <div class="greek-card">
+      <span class="lbl">DESK NET THETA (Θ / DAY)</span>
+      <span class="val crimson" id="hdr-net-theta">-$612.80</span>
+    </div>
+    <div class="greek-card">
+      <span class="lbl">PUT-CALL PARITY PROOF</span>
+      <span class="val emerald" id="hdr-parity-proof">VERIFIED (|ε| &lt; 1e-11)</span>
+    </div>
+    <div class="greek-card">
+      <span class="lbl">DELTA-GAMMA HEDGE DIRECTIVE</span>
+      <span class="val cyan" id="hdr-hedge-directive">SELL 4.125 BTC-USD PERP</span>
+    </div>
+  </section>
+
+  <!-- 4-PANE INSTITUTIONAL DERIVATIVES, FIX 4.4 & SOR WORKSTATION -->
+  <main class="workstation-grid">
+    <!-- PANE A: 3D SVI IMPLIED VOLATILITY SURFACE & GREEKS PROFILE CANVAS -->
+    <section class="pane" id="surface" aria-labelledby="pane-a-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE A</span>
+          <h2 id="pane-a-title" class="pane-title">3D ISOMETRIC IMPLIED VOLATILITY SMILE SURFACE (GATHERAL SVI) &amp; GREEKS PROFILE</h2>
+        </div>
+        <div class="header-controls">
+          <button type="button" class="btn greek-tab-btn active" data-greek="delta">Δ DELTA</button>
+          <button type="button" class="btn greek-tab-btn" data-greek="gamma">Γ GAMMA</button>
+          <button type="button" class="btn greek-tab-btn" data-greek="vega">V VEGA</button>
+          <button type="button" class="btn greek-tab-btn" data-greek="theta">Θ THETA</button>
+          <button type="button" class="btn greek-tab-btn" data-greek="vanna">VANNA</button>
+        </div>
+      </header>
+
+      <div class="pane-body">
+        <div class="canvas-split">
+          <!-- 3D Isometric Volatility Surface Canvas -->
+          <div class="canvas-box">
+            <canvas id="vol-surface-canvas" width="540" height="290" aria-label="3D Implied Volatility Smile Surface Canvas"></canvas>
+            <div class="canvas-overlay-meta">
+              <span style="color: var(--amber); font-weight: 700;">SVI w(k) = a + b[ρ(k-m) + √((k-m)² + σ²)]</span>
+              <span id="surface-hover-readout" style="color: var(--cyan); font-size: 10px;">Drag to rotate 3D mesh | Hover node for (K, T, IV, Δ, Γ)</span>
+            </div>
+          </div>
+
+          <!-- 1st & 2nd Order Greeks Strike Profile Canvas -->
+          <div class="canvas-box">
+            <canvas id="greeks-profile-canvas" width="360" height="290" aria-label="Options Greeks Strike Profile Canvas"></canvas>
+            <div class="canvas-overlay-meta">
+              <span id="greek-chart-label" style="color: var(--emerald); font-weight: 700;">CALL &amp; PUT DELTA (Δ) VS STRIKE</span>
+              <span style="color: var(--text-secondary); font-size: 10px;">Active Tenor Cross-Section</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="surface-controls-bar">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <label for="yaw-slider" class="ctrl-label">YAW</label>
+            <input type="range" id="yaw-slider" min="-1.4" max="1.4" step="0.02" value="-0.62" aria-label="3D Surface Yaw Rotation">
+            <label for="pitch-slider" class="ctrl-label">PITCH</label>
+            <input type="range" id="pitch-slider" min="0.2" max="1.1" step="0.02" value="0.56" aria-label="3D Surface Pitch Tilt">
+            <button type="button" id="toggle-autorotate-btn" class="btn">AUTO-ORB: OFF</button>
+          </div>
+          <div id="tenor-term-structure-pills" style="display: flex; gap: 8px; font-size: 10px; color: var(--text-secondary);">
+            <span>7D: --%</span>
+            <span>30D: --%</span>
+            <span>90D: --%</span>
+            <span>180D: --%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE B: STRADDLE OPTIONS CHAIN & NEWTON-RAPHSON IV SOLVER -->
+    <section class="pane" id="chain" aria-labelledby="pane-b-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE B</span>
+          <h2 id="pane-b-title" class="pane-title">STRADDLE OPTIONS CHAIN (CALLS | STRIKE &amp; SVI IV | PUTS) &amp; NEWTON-RAPHSON IV SOLVER</h2>
+        </div>
+        <span id="chain-atm-badge" style="color: var(--amber); font-size: 11px; font-weight: 700;">ATM STRADDLE: $7,240.00</span>
+      </header>
+
+      <div class="pane-body">
+        <!-- Responsive Table Wrapper (modern-web-guidance: responsive-table) -->
+        <div tabindex="0" role="region" aria-labelledby="options-chain-caption" class="table-wrapper">
+          <table class="chain-table">
+            <caption id="options-chain-caption" class="sr-only">Institutional Straddle Options Chain and BSM Greeks</caption>
+            <thead>
+              <tr>
+                <th scope="col">C.DELTA</th>
+                <th scope="col">C.GAMMA</th>
+                <th scope="col">C.VEGA</th>
+                <th scope="col">C.THETA</th>
+                <th scope="col">CALL BID/ASK</th>
+                <th scope="col" style="text-align:center; color: var(--amber);">STRIKE // IV</th>
+                <th scope="col">PUT BID/ASK</th>
+                <th scope="col">P.DELTA</th>
+                <th scope="col">P.VEGA</th>
+                <th scope="col">P.THETA</th>
+                <th scope="col">VANNA</th>
+              </tr>
+            </thead>
+            <tbody id="options-chain-tbody">
+              <!-- Populated dynamically from GET /api/options/chain -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Interactive Newton-Raphson + Halley Implied Volatility Solver -->
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <span style="font-weight: 700; color: var(--cyan);">HYBRID NEWTON-RAPHSON / HALLEY / BRENT IMPLIED VOLATILITY SOLVER (`POST /api/options/solve-iv`)</span>
+            <span id="iv-solver-badge" style="color: var(--emerald); font-weight: 700;">CONVERGED &le; 5 ITERS (|ε| &lt; 1e-8)</span>
+          </div>
+          <form id="iv-solver-form" class="form-grid" autocomplete="off">
+            <div class="field">
+              <label for="iv-spot">SPOT (S)</label>
+              <input type="number" id="iv-spot" step="any" value="94500" required>
+            </div>
+            <div class="field">
+              <label for="iv-strike">STRIKE (K)</label>
+              <input type="number" id="iv-strike" step="any" value="94500" required>
+            </div>
+            <div class="field">
+              <label for="iv-days">TENOR (DAYS)</label>
+              <input type="number" id="iv-days" step="1" min="1" max="730" value="30" required>
+            </div>
+            <div class="field">
+              <label for="iv-type">OPTION TYPE</label>
+              <select id="iv-type">
+                <option value="CALL" selected>CALL</option>
+                <option value="PUT">PUT</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="iv-target-price">MARKET PRICE ($)</label>
+              <input type="number" id="iv-target-price" step="any" value="6185.50" required>
+            </div>
+            <button type="submit" class="btn btn-cyan">SOLVE IV &lt;GO&gt;</button>
+          </form>
+          <div id="iv-solver-output" style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: var(--text-secondary); padding-top: 2px;">
+            <span>SOLVED IV: <strong style="color: var(--amber);">56.00%</strong></span>
+            <span>ITERATIONS: <strong style="color: var(--emerald);">4</strong></span>
+            <span>PRICING ERR: <strong style="color: var(--cyan);">0.00e+0</strong></span>
+            <span>Δ: <strong>+0.5421</strong> | Γ: <strong>0.000026</strong> | V: <strong>$106.40</strong> | Θ: <strong>-$101.20/d</strong></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE C: FIX 4.4 WIRE PROTOCOL & 40-BYTE BINARY SBE INSPECTOR -->
+    <section class="pane" id="fix" aria-labelledby="pane-c-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE C</span>
+          <h2 id="pane-c-title" class="pane-title">FIX 4.4 WIRE PROTOCOL GATEWAY (`35=D` &rarr; `35=8`) &amp; 40-BYTE BINARY SBE INSPECTOR</h2>
+        </div>
+        <span id="fix-checksum-status" style="color: var(--emerald); font-weight: 700;">TAG 10 CHECKSUM: VALID (MOD-256)</span>
+      </header>
+
+      <div class="pane-body">
+        <form id="fix-order-form" class="form-grid" autocomplete="off">
+          <div class="field">
+            <label for="fix-symbol">TAG 55 (SYMBOL)</label>
+            <input type="text" id="fix-symbol" value="BTC-USD" required>
+          </div>
+          <div class="field">
+            <label for="fix-side">TAG 54 (SIDE)</label>
+            <select id="fix-side">
+              <option value="BUY" selected>1 = BUY</option>
+              <option value="SELL">2 = SELL</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fix-type">TAG 40 (ORDTYPE)</label>
+            <select id="fix-type">
+              <option value="LIMIT" selected>2 = LIMIT</option>
+              <option value="MARKET">1 = MARKET</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fix-price">TAG 44 (PRICE)</label>
+            <input type="number" id="fix-price" step="any" value="94500.5" required>
+          </div>
+          <div class="field">
+            <label for="fix-size">TAG 38 (ORDERQTY)</label>
+            <input type="number" id="fix-size" step="any" value="0.50" required>
+          </div>
+          <button type="submit" class="btn btn-amber">TRANSMIT 35=D &lt;GO&gt;</button>
+          <button type="button" id="fix-tamper-btn" class="btn btn-crimson" title="Inject corrupted Tag 10 checksum to test gateway validation">TEST TAMPER TAG 10</button>
+        </form>
+
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <span style="color: var(--amber); font-weight: 700;">INBOUND `35=D NewOrderSingle` &amp; OUTBOUND `35=8 ExecutionReport` WIRE PAYLOAD</span>
+            <span style="color: var(--text-muted); font-size: 10px;">SOH DELIMITER `|`</span>
+          </div>
+          <div id="fix-inbound-wire" class="wire-box">8=FIX.4.4|9=101|35=D|49=BUYSIDE-DMA|56=ARGUS-OMEGA|34=1|11=FIX-INIT-001|55=BTC-USD|54=1|38=0.50|40=2|44=94500.5|59=1|10=170|</div>
+          <div id="fix-exec-report-wire" class="wire-box" style="color: var(--emerald);">8=FIX.4.4|9=110|35=8|49=ARGUS-OMEGA|56=BUYSIDE-DMA|34=2|150=F|39=2|55=BTC-USD|54=1|38=0.50|14=0.50|151=0|31=94500.5|6=94500.5|10=126|</div>
+        </div>
+
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <span style="color: var(--cyan); font-weight: 700;">40-BYTE BINARY SBE (SIMPLE BINARY ENCODING) LITTLE-ENDIAN FRAME DUMP (80 HEX CHARS)</span>
+            <span id="sbe-decoded-summary" style="color: var(--text-secondary); font-size: 10px;">Template=101 | Mantissa=1e8</span>
+          </div>
+          <div id="sbe-hex-grid" class="sbe-hex-grid" aria-label="40-Byte Binary SBE Hex Inspector">
+            <!-- 40 bytes rendered with structural field color-coding -->
+          </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 10px; color: var(--text-secondary);">
+            <span><strong style="color: var(--amber);">[0..7]</strong> 8B SBE Header (BlockLen=32, Template=101)</span>
+            <span><strong style="color: var(--cyan);">[8..15]</strong> uint64 OrderID</span>
+            <span><strong style="color: var(--emerald);">[16..23]</strong> int64 Price (x10⁸)</span>
+            <span><strong style="color: #c4b5fd;">[24..31]</strong> int64 Qty (x10⁸)</span>
+            <span><strong style="color: #fda4af;">[32..39]</strong> Side, Type &amp; ASCII Symbol</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE D: MULTI-VENUE SMART ORDER ROUTER (SOR) & CROSS-EXCHANGE ARBITRAGE SCANNER -->
+    <section class="pane" id="sor" aria-labelledby="pane-d-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE D</span>
+          <h2 id="pane-d-title" class="pane-title">MULTI-VENUE SMART ORDER ROUTER (SOR) &amp; SPATIAL / BASIS ARBITRAGE MATRIX</h2>
+        </div>
+        <span id="sor-savings-badge" style="color: var(--emerald); font-weight: 700;">SOR SAVINGS: +14.2 bps ($1,341.90)</span>
+      </header>
+
+      <div class="pane-body">
+        <form id="sor-route-form" class="form-grid" autocomplete="off">
+          <div class="field">
+            <label for="sor-symbol">INSTRUMENT</label>
+            <input type="text" id="sor-symbol" value="BTC-USD" required>
+          </div>
+          <div class="field">
+            <label for="sor-side">SWEEP SIDE</label>
+            <select id="sor-side">
+              <option value="BUY" selected>BUY SWEEP</option>
+              <option value="SELL">SELL SWEEP</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sor-size">PARENT SIZE</label>
+            <input type="number" id="sor-size" step="any" min="0.01" value="15.0" required>
+          </div>
+          <div class="field">
+            <label for="sor-urgency">URGENCY</label>
+            <select id="sor-urgency">
+              <option value="PASSIVE">PASSIVE</option>
+              <option value="NORMAL" selected>NORMAL</option>
+              <option value="AGGRESSIVE">AGGRESSIVE</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-emerald">ROUTE SWEEP &lt;GO&gt;</button>
+        </form>
+
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <span style="color: var(--emerald); font-weight: 700;">OPTIMAL LIQUIDITY SPLIT (`ARGUS-LIT` / `CME-GLOBEX` / `BINANCE-INST` / `LMAX-LD4`)</span>
+            <span id="sor-vwap-summary" style="color: var(--amber); font-size: 11px;">VWAP: $94,512.40 vs Single-Venue: $94,648.10</span>
+          </div>
+          <div id="sor-venue-bars" class="venue-bar-list">
+            <!-- Populated dynamically from POST /api/sor/route -->
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <span style="color: var(--amber); font-weight: 700;">LIVE CROSS-EXCHANGE SPATIAL &amp; CASH-AND-CARRY BASIS ARBITRAGE (`GET /api/arbitrage`)</span>
+            <button type="button" id="refresh-arb-btn" class="btn" style="padding: 2px 7px; font-size: 10px;">SCAN ARB</button>
+          </div>
+          <div tabindex="0" role="region" aria-labelledby="arb-table-caption" class="table-wrapper" style="max-block-size: 150px;">
+            <table class="chain-table">
+              <caption id="arb-table-caption" class="sr-only">Live Spatial and Basis Arbitrage Opportunities</caption>
+              <thead>
+                <tr>
+                  <th scope="col" style="text-align:left;">STRATEGY TYPE</th>
+                  <th scope="col" style="text-align:left;">BUY VENUE (ASK)</th>
+                  <th scope="col" style="text-align:left;">SELL VENUE (BID)</th>
+                  <th scope="col">NET EDGE</th>
+                  <th scope="col">MAX SIZE</th>
+                  <th scope="col">EST. PROFIT</th>
+                </tr>
+              </thead>
+              <tbody id="arb-tbody">
+                <!-- Populated dynamically from GET /api/arbitrage -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const state = {
+        symbol: 'BTC-USD',
+        tenor: '30D',
+        chainPayload: null,
+        selectedGreek: 'delta',
+        yaw: -0.62,
+        pitch: 0.56,
+        autoRotate: false,
+        hoveredNode: null,
+        projectedNodes: []
+      };
+
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('symbol')) {
+        state.symbol = urlParams.get('symbol').toUpperCase();
+        const symSel = document.getElementById('opt-symbol-select');
+        if (symSel) symSel.value = state.symbol;
+        const fixSym = document.getElementById('fix-symbol');
+        if (fixSym) fixSym.value = state.symbol;
+        const sorSym = document.getElementById('sor-symbol');
+        if (sorSym) sorSym.value = state.symbol;
+      }
+
+      async function fetchJson(url, options) {
+        const res = await fetch(url, options);
+        return res.json();
+      }
+
+      function fmtNum(n, d = 2) {
+        return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+      }
+
+      // =========================================================================
+      // 1. OPTIONS CHAIN & 3D SVI SURFACE HYDRATION
+      // =========================================================================
+      async function loadOptionsChainAndSurface() {
+        try {
+          const data = await fetchJson(`/api/options/chain?symbol=${encodeURIComponent(state.symbol)}&tenor=${encodeURIComponent(state.tenor)}`);
+          state.chainPayload = data;
+          renderHeaderGreeks(data);
+          renderOptionsChainTable(data);
+          render3dVolSurface();
+          renderGreeksProfileCanvas();
+
+          // Sync IV calculator defaults to ATM row
+          const atmRow = (data.chain || []).find((r) => r.isAtm) || (data.chain || [])[5];
+          if (atmRow) {
+            document.getElementById('iv-spot').value = data.spotPrice;
+            document.getElementById('iv-strike').value = atmRow.strike;
+            document.getElementById('iv-target-price').value = atmRow.call.price;
+          }
+        } catch (err) {
+          console.error('Failed to load options chain:', err);
+        }
+      }
+
+      function renderHeaderGreeks(data) {
+        if (!data) return;
+        const pg = data.portfolioGreeksSummary || {};
+        document.getElementById('hdr-spot-iv').textContent = `$${fmtNum(data.spotPrice, 2)} // ${fmtNum(data.atmVolPct, 2)}%`;
+        document.getElementById('hdr-net-delta').textContent = `${pg.netDelta >= 0 ? '+' : ''}${fmtNum(pg.netDelta, 4)} ($${fmtNum(pg.deltaDollarExposure, 0)})`;
+        document.getElementById('hdr-net-gamma').textContent = `${pg.netGamma >= 0 ? '+' : ''}${Number(pg.netGamma || 0).toFixed(6)}`;
+        document.getElementById('hdr-net-vega').textContent = `${pg.netVega >= 0 ? '+' : ''}$${fmtNum(pg.netVega, 2)}`;
+        document.getElementById('hdr-net-theta').textContent = `${pg.netTheta >= 0 ? '+' : ''}$${fmtNum(pg.netTheta, 2)}/d`;
+
+        const parityErr = data.putCallParity?.maxParityError ?? 0;
+        document.getElementById('hdr-parity-proof').textContent = `VERIFIED (|ε| = ${Number(parityErr).toExponential(2)})`;
+        document.getElementById('hdr-hedge-directive').textContent = pg.hedgeDirective || 'DELTA NEUTRAL';
+        document.getElementById('chain-atm-badge').textContent = `ATM STRADDLE: $${fmtNum(data.atmStraddlePrice, 2)}`;
+
+        const pillsEl = document.getElementById('tenor-term-structure-pills');
+        if (pillsEl && Array.isArray(data.surface)) {
+          pillsEl.innerHTML = data.surface
+            .map((t) => `<span><strong style="color:var(--amber)">${t.tenor}:</strong> ${fmtNum(t.atmVolPct, 1)}%</span>`)
+            .join('');
+        }
+      }
+
+      function renderOptionsChainTable(data) {
+        const tbody = document.getElementById('options-chain-tbody');
+        if (!tbody || !data || !Array.isArray(data.chain)) return;
+
+        tbody.innerHTML = data.chain.map((row) => {
+          const atmClass = row.isAtm ? 'atm-row' : '';
+          return `
+            <tr class="${atmClass}" data-strike="${row.strike}" data-call-px="${row.call.price}" data-put-px="${row.put.price}">
+              <td style="color:var(--emerald)">+${Number(row.call.delta).toFixed(3)}</td>
+              <td>${Number(row.call.gamma).toFixed(5)}</td>
+              <td>${fmtNum(row.call.vega, 1)}</td>
+              <td style="color:var(--crimson)">${fmtNum(row.call.theta, 1)}</td>
+              <td class="call-px">${fmtNum(row.call.bid, 2)} / ${fmtNum(row.call.ask, 2)}</td>
+              <th scope="row" class="strike-col">${fmtNum(row.strike, 0)} <span class="iv-cell">(${fmtNum(row.ivPct, 1)}%)</span></th>
+              <td class="put-px">${fmtNum(row.put.bid, 2)} / ${fmtNum(row.put.ask, 2)}</td>
+              <td style="color:var(--crimson)">${Number(row.put.delta).toFixed(3)}</td>
+              <td>${fmtNum(row.put.vega, 1)}</td>
+              <td style="color:var(--crimson)">${fmtNum(row.put.theta, 1)}</td>
+              <td style="color:var(--cyan)">${Number(row.call.vanna).toFixed(3)}</td>
+            </tr>
+          `;
+        }).join('');
+
+        tbody.querySelectorAll('tr').forEach((tr) => {
+          tr.addEventListener('click', () => {
+            const strike = Number(tr.getAttribute('data-strike'));
+            const callPx = Number(tr.getAttribute('data-call-px'));
+            document.getElementById('iv-strike').value = strike;
+            document.getElementById('iv-target-price').value = callPx;
+            document.getElementById('iv-type').value = 'CALL';
+            runIvSolver();
+          });
+        });
+      }
+
+      // =========================================================================
+      // 2. 3D ISOMETRIC VOLATILITY SURFACE & GREEKS CANVAS RENDERER
+      // =========================================================================
+      function project3D(nx, ny, nz, width, height, yaw, pitch) {
+        // nx in [-1, 1] (moneyness), ny in [-1, 1] (tenor), nz in [0, 1] (IV height)
+        const cosY = Math.cos(yaw);
+        const sinY = Math.sin(yaw);
+        const cosP = Math.cos(pitch);
+        const sinP = Math.sin(pitch);
+
+        const rx = nx * cosY - ny * sinY;
+        const ry = nx * sinY + ny * cosY;
+
+        const scale = Math.min(width, height) * 0.36;
+        const cx = width * 0.50;
+        const cy = height * 0.64;
+
+        const screenX = cx + rx * scale * 1.15;
+        const screenY = cy + ry * sinP * scale * 0.75 - (nz - 0.3) * cosP * scale * 0.95;
+        return { x: screenX, y: screenY, depth: ry };
+      }
+
+      function render3dVolSurface() {
+        const canvas = document.getElementById('vol-surface-canvas');
+        if (!canvas || !state.chainPayload || !Array.isArray(state.chainPayload.surface)) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Subtle background grid
+        ctx.strokeStyle = 'rgba(28, 38, 56, 0.45)';
+        ctx.lineWidth = 1;
+        for (let gx = 0; gx < w; gx += 36) {
+          ctx.beginPath();
+          ctx.moveTo(gx, 0);
+          ctx.lineTo(gx, h);
+          ctx.stroke();
+        }
+        for (let gy = 0; gy < h; gy += 36) {
+          ctx.beginPath();
+          ctx.moveTo(0, gy);
+          ctx.lineTo(w, gy);
+          ctx.stroke();
+        }
+
+        const surface = state.chainPayload.surface; // 5 tenors x 11 strikes
+        const allCells = [];
+        surface.forEach((r) => r.strikes.forEach((c) => allCells.push(c)));
+        const minIv = Math.min(...allCells.map((c) => c.ivPct));
+        const maxIv = Math.max(minIv + 5, ...allCells.map((c) => c.ivPct));
+
+        const gridPts = [];
+        state.projectedNodes = [];
+
+        for (let ti = 0; ti < surface.length; ti++) {
+          const ny = (ti / Math.max(1, surface.length - 1)) * 2 - 1;
+          const rowPts = [];
+          const strikesArr = surface[ti].strikes;
+          for (let si = 0; si < strikesArr.length; si++) {
+            const cell = strikesArr[si];
+            const nx = (si / Math.max(1, strikesArr.length - 1)) * 2 - 1;
+            const nz = (cell.ivPct - minIv) / (maxIv - minIv);
+            const pt = project3D(nx, ny, nz, w, h, state.yaw, state.pitch);
+            const node = { ...pt, cell, ti, si, nz };
+            rowPts.push(node);
+            state.projectedNodes.push(node);
+          }
+          gridPts.push(rowPts);
+        }
+
+        // Draw translucent surface quads from back to front
+        for (let ti = 0; ti < gridPts.length - 1; ti++) {
+          for (let si = 0; si < gridPts[ti].length - 1; si++) {
+            const p00 = gridPts[ti][si];
+            const p10 = gridPts[ti][si + 1];
+            const p11 = gridPts[ti + 1][si + 1];
+            const p01 = gridPts[ti + 1][si];
+            const avgNz = 0.25 * (p00.nz + p10.nz + p11.nz + p01.nz);
+
+            const rCol = Math.round(16 + avgNz * 229);
+            const gCol = Math.round(185 - avgNz * 35);
+            const bCol = Math.round(212 - avgNz * 190);
+
+            ctx.fillStyle = `rgba(${rCol}, ${gCol}, ${bCol}, 0.24)`;
+            ctx.strokeStyle = `rgba(${rCol}, ${gCol}, ${bCol}, 0.78)`;
+            ctx.lineWidth = 1.1;
+
+            ctx.beginPath();
+            ctx.moveTo(p00.x, p00.y);
+            ctx.lineTo(p10.x, p10.y);
+            ctx.lineTo(p11.x, p11.y);
+            ctx.lineTo(p01.x, p01.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        // Draw nodes & highlight hovered node
+        for (const node of state.projectedNodes) {
+          const isHovered = state.hoveredNode && state.hoveredNode.ti === node.ti && state.hoveredNode.si === node.si;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, isHovered ? 5.2 : 2.6, 0, Math.PI * 2);
+          ctx.fillStyle = isHovered ? '#ffffff' : node.si === 5 ? '#f59e0b' : '#06b6d4';
+          ctx.fill();
+        }
+      }
+
+      function renderGreeksProfileCanvas() {
+        const canvas = document.getElementById('greeks-profile-canvas');
+        if (!canvas || !state.chainPayload || !Array.isArray(state.chainPayload.chain)) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const chain = state.chainPayload.chain;
+        const key = state.selectedGreek;
+        const pad = { top: 38, right: 18, bottom: 28, left: 46 };
+        const plotW = w - pad.left - pad.right;
+        const plotH = h - pad.top - pad.bottom;
+
+        const callVals = chain.map((r) => Number(r.call[key] ?? r[key] ?? 0));
+        const putVals = chain.map((r) => Number(r.put[key] ?? r[key] ?? 0));
+        const allVals = [...callVals, ...putVals];
+        const minV = Math.min(...allVals);
+        const maxV = Math.max(minV + 1e-6, ...allVals);
+
+        // Zero / baseline axis
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(pad.left, pad.top, plotW, plotH);
+
+        const mapX = (i) => pad.left + (i / Math.max(1, chain.length - 1)) * plotW;
+        const mapY = (v) => pad.top + plotH - ((v - minV) / (maxV - minV)) * plotH;
+
+        // Draw Call curve (Emerald)
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        callVals.forEach((v, i) => {
+          const x = mapX(i);
+          const y = mapY(v);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Draw Put curve (Crimson) if different from Call
+        if (key === 'delta' || key === 'theta') {
+          ctx.strokeStyle = '#f43f5e';
+          ctx.lineWidth = 2.0;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          putVals.forEach((v, i) => {
+            const x = mapX(i);
+            const y = mapY(v);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Draw strike labels along bottom
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px monospace';
+        [0, 5, 10].forEach((idx) => {
+          if (chain[idx]) {
+            ctx.fillText(String(chain[idx].strike), mapX(idx) - 16, h - 8);
+          }
+        });
+      }
+
+      // =========================================================================
+      // 3. NEWTON-RAPHSON IMPLIED VOLATILITY SOLVER
+      // =========================================================================
+      async function runIvSolver(e) {
+        if (e) e.preventDefault();
+        const S = Number(document.getElementById('iv-spot').value);
+        const K = Number(document.getElementById('iv-strike').value);
+        const days = Number(document.getElementById('iv-days').value);
+        const type = document.getElementById('iv-type').value;
+        const targetPrice = Number(document.getElementById('iv-target-price').value);
+
+        try {
+          const res = await fetchJson('/api/options/solve-iv', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              symbol: state.symbol,
+              S,
+              K,
+              T: days / 365,
+              type,
+              targetPrice
+            })
+          });
+
+          const g = res.greeks || {};
+          document.getElementById('iv-solver-badge').textContent =
+            `${res.converged ? 'CONVERGED' : 'SOLVED'} IN ${res.iterations} ITERS (|ε| = ${res.pricingError})`;
+          document.getElementById('iv-solver-output').innerHTML = `
+            <span>SOLVED IV: <strong style="color: var(--amber);">${fmtNum((res.impliedVol || 0) * 100, 2)}%</strong></span>
+            <span>ITERATIONS: <strong style="color: var(--emerald);">${res.iterations}</strong></span>
+            <span>PRICING ERR: <strong style="color: var(--cyan);">${res.pricingError}</strong></span>
+            <span>Δ: <strong>${Number(g.delta || 0).toFixed(4)}</strong> | Γ: <strong>${Number(g.gamma || 0).toFixed(6)}</strong> | V: <strong>$${fmtNum(g.vega, 2)}</strong> | Θ: <strong>$${fmtNum(g.theta, 2)}/d</strong></span>
+          `;
+        } catch (err) {
+          console.error('IV solver failed:', err);
+        }
+      }
+
+      // =========================================================================
+      // 4. FIX 4.4 WIRE GATEWAY & 40-BYTE SBE BINARY INSPECTOR
+      // =========================================================================
+      async function transmitFixOrder(tamperChecksum = false) {
+        const symbol = document.getElementById('fix-symbol').value.trim().toUpperCase();
+        const side = document.getElementById('fix-side').value;
+        const type = document.getElementById('fix-type').value;
+        const price = Number(document.getElementById('fix-price').value);
+        const size = Number(document.getElementById('fix-size').value);
+
+        const body = {
+          symbol,
+          side,
+          type,
+          price,
+          size,
+          clOrdId: `FIX-UI-${Date.now()}`
+        };
+
+        if (tamperChecksum) {
+          body.rawFix = `8=FIX.4.4|9=98|35=D|49=BUYSIDE-DMA|56=ARGUS-OMEGA|34=9|11=TAMPER-01|55=${symbol}|54=1|38=${size}|40=2|44=${price}|10=999|`;
+        }
+
+        try {
+          const res = await fetchJson('/api/fix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+
+          const statusEl = document.getElementById('fix-checksum-status');
+          if (res.validChecksum) {
+            statusEl.style.color = 'var(--emerald)';
+            statusEl.textContent = 'TAG 10 CHECKSUM: VALID (MOD-256 VERIFIED)';
+          } else {
+            statusEl.style.color = 'var(--crimson)';
+            statusEl.textContent = 'TAG 10 CHECKSUM: INVALID / TAMPER DETECTED!';
+          }
+
+          document.getElementById('fix-inbound-wire').textContent = res.inboundFix || '';
+          document.getElementById('fix-exec-report-wire').textContent = res.executionReport || '';
+
+          renderSbeHexBytes(res.sbeHex || '', res.sbe?.decoded);
+        } catch (err) {
+          console.error('FIX request failed:', err);
+        }
+      }
+
+      function renderSbeHexBytes(hexStr, decoded) {
+        const grid = document.getElementById('sbe-hex-grid');
+        if (!grid) return;
+        const clean = String(hexStr || '').replace(/\s+/g, '').toUpperCase().padEnd(80, '0');
+        const bytes = clean.match(/.{1,2}/g) || [];
+
+        grid.innerHTML = bytes.slice(0, 40).map((b, idx) => {
+          let cls = 'sbe-hdr';
+          if (idx >= 8 && idx < 16) cls = 'sbe-id';
+          else if (idx >= 16 && idx < 24) cls = 'sbe-px';
+          else if (idx >= 24 && idx < 32) cls = 'sbe-qty';
+          else if (idx >= 32) cls = 'sbe-sym';
+          return `<div class="sbe-byte ${cls}" title="Byte ${idx}: 0x${b}">${b}</div>`;
+        }).join('');
+
+        if (decoded) {
+          document.getElementById('sbe-decoded-summary').textContent =
+            `40 Bytes | Template=${decoded.templateId || 101} | OrderID=${decoded.orderIdNum || decoded.orderId} | Px=${decoded.price} | Qty=${decoded.size}`;
+        }
+      }
+
+      // =========================================================================
+      // 5. MULTI-VENUE SMART ORDER ROUTER & ARBITRAGE SCANNER
+      // =========================================================================
+      async function runSorRoute(e) {
+        if (e) e.preventDefault();
+        const symbol = document.getElementById('sor-symbol').value.trim().toUpperCase();
+        const side = document.getElementById('sor-side').value;
+        const size = Number(document.getElementById('sor-size').value);
+        const urgency = document.getElementById('sor-urgency').value;
+
+        try {
+          const res = await fetchJson('/api/sor/route', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, side, size, totalSize: size, urgency })
+          });
+
+          const allocations = res.allocations || res.legs || [];
+          const vwap = res.vwapEffectivePrice ?? res.effectivePrice ?? 0;
+          const singlePx = res.singleVenueSweepPrice ?? res.singleVenuePrice ?? vwap;
+          const savingsBps = res.savingsBps ?? 12.4;
+          const savingsUsd = res.estimatedSavingsUsd ?? Math.abs(singlePx - vwap) * size;
+
+          document.getElementById('sor-savings-badge').textContent =
+            `SOR SAVINGS: +${fmtNum(savingsBps, 2)} bps ($${fmtNum(savingsUsd, 2)})`;
+          document.getElementById('sor-vwap-summary').textContent =
+            `SOR VWAP: $${fmtNum(vwap, 2)} vs Single-Venue Sweep: $${fmtNum(singlePx, 2)}`;
+
+          const container = document.getElementById('sor-venue-bars');
+          container.innerHTML = allocations.map((leg) => {
+            const legSz = Number(leg.size ?? leg.allocatedSize ?? 0);
+            const pct = Math.min(100, Math.max(4, Number(leg.sharePct ?? (legSz / size) * 100)));
+            const px = Number(leg.expectedFillPrice ?? leg.fillPrice ?? vwap);
+            return `
+              <div class="venue-row">
+                <strong style="color:var(--cyan)">${leg.venue}</strong>
+                <div class="venue-track">
+                  <div class="venue-fill" style="width:${pct.toFixed(1)}%"></div>
+                </div>
+                <span style="text-align:right; color:var(--text-secondary);">
+                  <strong style="color:var(--text-primary)">${fmtNum(legSz, 2)}</strong> (${pct.toFixed(0)}%) @ $${fmtNum(px, 2)}
+                </span>
+              </div>
+            `;
+          }).join('');
+        } catch (err) {
+          console.error('SOR routing failed:', err);
+        }
+      }
+
+      async function loadArbitrageScanner() {
+        try {
+          const res = await fetchJson(`/api/arbitrage?symbol=${encodeURIComponent(state.symbol)}`);
+          const list = Array.isArray(res) ? res : res.opportunities || [];
+          const tbody = document.getElementById('arb-tbody');
+          if (!tbody) return;
+
+          tbody.innerHTML = list.map((o) => {
+            const edge = Number(o.netEdgeBps ?? o.netSpreadBps ?? 0);
+            const maxSz = Number(o.maxExecutableSize ?? o.maxSize ?? 2.5);
+            const profit = Number(o.expectedProfitUsd ?? 0);
+            return `
+              <tr>
+                <td style="text-align:left; color:var(--amber); font-weight:700;">${o.type || 'SPATIAL_ARB'}</td>
+                <td style="text-align:left; color:var(--emerald);">${o.buyVenue} ($${fmtNum(o.buyAskPrice ?? o.buyPrice, 2)})</td>
+                <td style="text-align:left; color:var(--cyan);">${o.sellVenue} ($${fmtNum(o.sellBidPrice ?? o.sellPrice, 2)})</td>
+                <td style="color:var(--emerald); font-weight:700;">+${fmtNum(edge, 1)} bps</td>
+                <td>${fmtNum(maxSz, 2)}</td>
+                <td style="color:var(--amber); font-weight:700;">+$${fmtNum(profit, 2)}</td>
+              </tr>
+            `;
+          }).join('');
+        } catch (err) {
+          console.error('Arbitrage scan failed:', err);
+        }
+      }
+
+      // =========================================================================
+      // 6. INTERACTIVE EVENTS & 3D MOUSE DRAG / HOVER
+      // =========================================================================
+      function bindEvents() {
+        document.getElementById('opt-symbol-select').addEventListener('change', (e) => {
+          state.symbol = e.target.value;
+          document.getElementById('fix-symbol').value = state.symbol;
+          document.getElementById('sor-symbol').value = state.symbol;
+          loadOptionsChainAndSurface();
+          runSorRoute();
+          loadArbitrageScanner();
+        });
+
+        document.getElementById('opt-tenor-select').addEventListener('change', (e) => {
+          state.tenor = e.target.value;
+          loadOptionsChainAndSurface();
+        });
+
+        document.getElementById('refresh-surface-btn').addEventListener('click', () => {
+          loadOptionsChainAndSurface();
+          loadArbitrageScanner();
+        });
+
+        document.querySelectorAll('.greek-tab-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.selectedGreek = btn.getAttribute('data-greek') || 'delta';
+            document.querySelectorAll('.greek-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+            document.getElementById('greek-chart-label').textContent =
+              `CALL & PUT ${state.selectedGreek.toUpperCase()} VS STRIKE`;
+            renderGreeksProfileCanvas();
+          });
+        });
+
+        const yawSlider = document.getElementById('yaw-slider');
+        const pitchSlider = document.getElementById('pitch-slider');
+        yawSlider.addEventListener('input', () => {
+          state.yaw = Number(yawSlider.value);
+          render3dVolSurface();
+        });
+        pitchSlider.addEventListener('input', () => {
+          state.pitch = Number(pitchSlider.value);
+          render3dVolSurface();
+        });
+
+        const autoBtn = document.getElementById('toggle-autorotate-btn');
+        autoBtn.addEventListener('click', () => {
+          state.autoRotate = !state.autoRotate;
+          autoBtn.textContent = `AUTO-ORB: ${state.autoRotate ? 'ON' : 'OFF'}`;
+          autoBtn.classList.toggle('active', state.autoRotate);
+        });
+
+        // 3D Canvas Mouse Drag & Hover Inspection
+        const surfCanvas = document.getElementById('vol-surface-canvas');
+        let dragging = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        surfCanvas.addEventListener('mousedown', (e) => {
+          dragging = true;
+          lastX = e.clientX;
+          lastY = e.clientY;
+        });
+        window.addEventListener('mouseup', () => { dragging = false; });
+        surfCanvas.addEventListener('mousemove', (e) => {
+          const rect = surfCanvas.getBoundingClientRect();
+          const mx = ((e.clientX - rect.left) / rect.width) * surfCanvas.width;
+          const my = ((e.clientY - rect.top) / rect.height) * surfCanvas.height;
+
+          if (dragging) {
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            state.yaw = Math.max(-1.4, Math.min(1.4, state.yaw + dx * 0.007));
+            state.pitch = Math.max(0.2, Math.min(1.1, state.pitch + dy * 0.005));
+            yawSlider.value = state.yaw;
+            pitchSlider.value = state.pitch;
+            render3dVolSurface();
+            return;
+          }
+
+          // Nearest projected 3D node hit-test
+          let best = null;
+          let bestDist = 18;
+          for (const node of state.projectedNodes) {
+            const d = Math.hypot(node.x - mx, node.y - my);
+            if (d < bestDist) {
+              bestDist = d;
+              best = node;
+            }
+          }
+          if (best !== state.hoveredNode) {
+            state.hoveredNode = best;
+            render3dVolSurface();
+            if (best && best.cell) {
+              const c = best.cell;
+              document.getElementById('surface-hover-readout').textContent =
+                `[${c.tenor} | K=${c.strike}] SVI IV=${c.ivPct}% | Call=$${c.callPrice} | Put=$${c.putPrice} | Δ=${c.callDelta} | Γ=${c.gamma}`;
+            }
+          }
+        });
+
+        document.getElementById('iv-solver-form').addEventListener('submit', runIvSolver);
+        document.getElementById('fix-order-form').addEventListener('submit', (e) => {
+          e.preventDefault();
+          transmitFixOrder(false);
+        });
+        document.getElementById('fix-tamper-btn').addEventListener('click', () => transmitFixOrder(true));
+        document.getElementById('sor-route-form').addEventListener('submit', runSorRoute);
+        document.getElementById('refresh-arb-btn').addEventListener('click', loadArbitrageScanner);
+
+        setInterval(() => {
+          if (state.autoRotate) {
+            state.yaw += 0.018;
+            if (state.yaw > 1.4) state.yaw = -1.4;
+            yawSlider.value = state.yaw;
+            render3dVolSurface();
+          }
+        }, 45);
+      }
+
+      bindEvents();
+      loadOptionsChainAndSurface();
+      transmitFixOrder(false);
+      runSorRoute();
+      loadArbitrageScanner();
+    })();
+  </script>
+</body>
+</html>

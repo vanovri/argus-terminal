@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en" class="dark-terminal">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARGUS // WAVE 4: MACRO YIELD CURVE (NSS), FIXED INCOME DESK, LOB TIME-MACHINE &amp; DARK POOL ATS</title>
+  <style>
+    :root {
+      --bg-obsidian: #06080c;
+      --bg-panel: #0b0f17;
+      --bg-panel-alt: #0f1520;
+      --bg-elevated: #141c2b;
+      --border-hairline: #1c2638;
+      --border-focus: #f59e0b;
+      --text-primary: #e8edf5;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --amber: #f59e0b;
+      --amber-dim: rgba(245, 158, 11, 0.14);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.14);
+      --crimson: #f43f5e;
+      --crimson-dim: rgba(244, 63, 94, 0.14);
+      --cyan: #06b6d4;
+      --cyan-dim: rgba(6, 182, 212, 0.14);
+      --violet: #8b5cf6;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Mono', Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background-color: var(--bg-obsidian);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.4;
+      font-variant-numeric: tabular-nums;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 14px;
+      background: linear-gradient(180deg, #0d131f 0%, #080b11 100%);
+      border-bottom: 1px solid var(--border-hairline);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      flex-wrap: wrap;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-badge {
+      background: var(--amber);
+      color: #000;
+      font-weight: 800;
+      padding: 3px 7px;
+      border-radius: 2px;
+      letter-spacing: 0.06em;
+    }
+
+    .brand-title {
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      color: var(--text-primary);
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .ctrl-label {
+      color: var(--text-muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    select, input[type="number"], input[type="text"] {
+      background: var(--bg-obsidian);
+      color: var(--text-primary);
+      border: 1px solid var(--border-hairline);
+      padding: 4px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      border-radius: 2px;
+    }
+
+    select:focus, input:focus, button:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 1px;
+    }
+
+    .btn {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-hairline);
+      padding: 4px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 120ms cubic-bezier(0.32, 0.72, 0, 1), border-color 120ms cubic-bezier(0.32, 0.72, 0, 1), color 120ms cubic-bezier(0.32, 0.72, 0, 1);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .btn:hover {
+      border-color: var(--amber);
+      color: var(--amber);
+    }
+
+    .btn-amber {
+      background: var(--amber);
+      color: #04060a;
+      border-color: var(--amber);
+      font-weight: 700;
+    }
+
+    .btn-cyan {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    .btn-emerald {
+      background: var(--emerald-dim);
+      color: var(--emerald);
+      border-color: var(--emerald);
+    }
+
+    .telemetry-ribbon {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 1px;
+      background: var(--border-hairline);
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .tele-card {
+      background: var(--bg-panel);
+      padding: 7px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .tele-card .lbl {
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+    }
+
+    .tele-card .val {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .val.amber { color: var(--amber); }
+    .val.emerald { color: var(--emerald); }
+    .val.cyan { color: var(--cyan); }
+    .val.crimson { color: var(--crimson); }
+
+    .workstation-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.05fr;
+      grid-template-rows: auto auto;
+      gap: 1px;
+      background: var(--border-hairline);
+      min-height: calc(100vh - 96px);
+    }
+
+    @media (max-width: 1180px) {
+      .workstation-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .pane {
+      background: var(--bg-panel);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 12px;
+      background: var(--bg-panel-alt);
+      border-bottom: 1px solid var(--border-hairline);
+      flex-wrap: wrap;
+    }
+
+    .pane-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pane-id {
+      background: var(--amber-dim);
+      color: var(--amber);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 2px;
+    }
+
+    .pane-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-primary);
+    }
+
+    .pane-body {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+    }
+
+    .canvas-box {
+      background: var(--bg-obsidian);
+      border: 1px solid var(--border-hairline);
+      position: relative;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .canvas-box canvas {
+      display: block;
+      width: 100%;
+      height: 235px;
+    }
+
+    /* Responsive Tables (modern-web-guidance: responsive-table) */
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      max-block-size: min(260px, 60vh);
+      container-type: inline-size;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-obsidian);
+    }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 11px;
+      --label-1: "INSTRUMENT";
+      --label-2: "COUPON / MAT";
+      --label-3: "CLEAN / DIRTY";
+      --label-4: "YTM %";
+      --label-5: "MOD DUR";
+      --label-6: "CONVEXITY";
+      --label-7: "DV01 ($)";
+      --label-8: "Z-SPREAD";
+    }
+
+    table.data-table thead {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 1;
+      background: #101726;
+    }
+
+    table.data-table th,
+    table.data-table td {
+      padding: 5px 7px;
+      text-align: right;
+      border-bottom: 1px solid #131b2b;
+      white-space: nowrap;
+    }
+
+    table.data-table th {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    table.data-table tbody th {
+      position: sticky;
+      inset-inline-start: 0;
+      text-align: left;
+      background: #0d1320;
+      color: var(--amber);
+      font-weight: 700;
+      border-right: 1px solid var(--border-hairline);
+    }
+
+    @container (width < 600px) {
+      table.data-table,
+      table.data-table thead,
+      table.data-table tbody,
+      table.data-table tr,
+      table.data-table th,
+      table.data-table td {
+        display: block;
+      }
+
+      table.data-table thead {
+        display: none;
+      }
+
+      table.data-table tr {
+        margin-block-end: 0.75rem;
+        border: 1px solid var(--border-hairline);
+      }
+
+      table.data-table tbody th {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 2;
+        background: #141c2b;
+      }
+
+      table.data-table td {
+        text-align: left;
+      }
+
+      table.data-table td:nth-child(2)::before { content: var(--label-2) ": "; color: var(--text-muted); }
+      table.data-table td:nth-child(3)::before { content: var(--label-3) ": "; color: var(--text-muted); }
+      table.data-table td:nth-child(4)::before { content: var(--label-4) ": "; color: var(--text-muted); }
+      table.data-table td:nth-child(5)::before { content: var(--label-5) ": "; color: var(--text-muted); }
+      table.data-table td:nth-child(6)::before { content: var(--label-6) ": "; color: var(--text-muted); }
+      table.data-table td:nth-child(7)::before { content: var(--label-7) ": "; color: var(--text-muted); }
+      table.data-table td:nth-child(8)::before { content: var(--label-8) ": "; color: var(--text-muted); }
+    }
+
+    .sub-card {
+      background: var(--bg-obsidian);
+      border: 1px solid var(--border-hairline);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+      gap: 8px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .field label {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    .replay-ladder-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .ladder-col {
+      background: #05070b;
+      border: 1px solid var(--border-hairline);
+      padding: 6px;
+      contain: layout style;
+    }
+
+    .ladder-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 2px 4px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <header class="top-header" role="banner">
+    <div class="brand-group">
+      <span class="brand-badge">WAVE 4 // MACRO &amp; ATS</span>
+      <h1 class="brand-title">ARGUS // NELSON-SIEGEL-SVENSSON YIELD CURVE, BOND DESK, LOB TIME-MACHINE &amp; DARK POOL</h1>
+    </div>
+
+    <div class="header-controls">
+      <label for="macro-regime-select" class="ctrl-label">CURVE REGIME</label>
+      <select id="macro-regime-select" aria-label="Select Sovereign Yield Curve Regime">
+        <option value="NORMAL_STEEP" selected>NORMAL_STEEP (+65 bps 2s10s)</option>
+        <option value="INVERTED_HAWKISH">INVERTED_HAWKISH (-52 bps 2s10s)</option>
+        <option value="BULL_STEEPENER">BULL_STEEPENER (Front-End Cuts)</option>
+        <option value="BEAR_FLATTENER">BEAR_FLATTENER (Front-End Selloff)</option>
+        <option value="HUMPED_TRANSITION">HUMPED_TRANSITION (Belly Hump)</option>
+      </select>
+
+      <label for="macro-shift-bps" class="ctrl-label">PARALLEL SHOCK (BPS)</label>
+      <input type="number" id="macro-shift-bps" value="0" step="25" min="-300" max="300" aria-label="Parallel Yield Shift in Basis Points">
+      <button type="button" id="apply-macro-btn" class="btn btn-amber">APPLY CURVE &lt;GO&gt;</button>
+      <a href="/" class="btn">MAIN TERMINAL &lt;GO&gt;</a>
+      <a href="/options.html" class="btn">OPTIONS &amp; FIX &lt;GO&gt;</a>
+      <a href="/deck.html" class="btn">DECK &lt;GO&gt;</a>
+    </div>
+  </header>
+
+  <section class="telemetry-ribbon" aria-label="Wave 4 Macro, Fixed Income, Time-Machine, and Dark Pool Telemetry">
+    <div class="tele-card">
+      <span class="lbl">US 2s10s / 3m10y SPREAD</span>
+      <span class="val amber" id="hdr-2s10s">+42.5 bps // +68.0 bps</span>
+    </div>
+    <div class="tele-card">
+      <span class="lbl">2s5s10s BUTTERFLY</span>
+      <span class="val cyan" id="hdr-butterfly">-8.40 bps</span>
+    </div>
+    <div class="tele-card">
+      <span class="lbl">BOND DESK TOTAL DV01</span>
+      <span class="val emerald" id="hdr-desk-dv01">$41,280 / bp</span>
+    </div>
+    <div class="tele-card">
+      <span class="lbl">PORTFOLIO MOD DURATION / CONV</span>
+      <span class="val amber" id="hdr-desk-dur">8.42 yrs // 96.4</span>
+    </div>
+    <div class="tele-card">
+      <span class="lbl">LOB TIME-MACHINE STATE HASH</span>
+      <span class="val cyan" id="hdr-replay-hash">SEQ #60 // VERIFIED</span>
+    </div>
+    <div class="tele-card">
+      <span class="lbl">DARK POOL PRICE IMPROVEMENT</span>
+      <span class="val emerald" id="hdr-dark-savings">+$482.50 (4.25 bps)</span>
+    </div>
+  </section>
+
+  <main class="workstation-grid">
+    <!-- PANE 1: NELSON-SIEGEL-SVENSSON YIELD CURVE & INSTANTANEOUS FORWARD CURVE -->
+    <section class="pane" id="pane-yield-curve" aria-labelledby="pane-yc-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE 1</span>
+          <h2 id="pane-yc-title" class="pane-title">NELSON-SIEGEL-SVENSSON (NSS) SOVEREIGN YIELD CURVE &amp; FORWARD RATE ENGINE</h2>
+        </div>
+        <span id="nss-params-badge" style="color: var(--amber); font-size: 10px;">β0=4.85% | β1=-1.15% | β2=-0.60% | β3=+0.45%</span>
+      </header>
+      <div class="pane-body">
+        <div class="canvas-box">
+          <canvas id="nss-curve-canvas" width="560" height="235" aria-label="Nelson-Siegel-Svensson Spot Yield and Instantaneous Forward Curve Canvas"></canvas>
+        </div>
+        <div class="sub-card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="color:var(--cyan);">NSS 6-FACTOR PARAMETER &amp; SPREAD READOUT</strong>
+            <span id="yc-inversion-flag" style="color:var(--emerald); font-weight:700;">SLOPE: NORMAL UPWARD</span>
+          </div>
+          <div id="yc-tenors-strip" style="display:flex; flex-wrap:wrap; gap:10px; font-size:11px; color:var(--text-secondary);"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE 2: FIXED INCOME BOND DESK (DURATION, DV01, CONVEXITY, YTM & Z-SPREAD) -->
+    <section class="pane" id="pane-bond-desk" aria-labelledby="pane-bond-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE 2</span>
+          <h2 id="pane-bond-title" class="pane-title">FIXED INCOME BOND DESK // DURATION, DV01, CONVEXITY &amp; Z-SPREAD MATRIX</h2>
+        </div>
+        <span style="color:var(--emerald); font-size:10px; font-weight:700;">NEWTON-RAPHSON YTM &amp; Z-SPREAD</span>
+      </header>
+      <div class="pane-body">
+        <div tabindex="0" role="region" aria-labelledby="bond-blotter-caption" class="table-wrapper">
+          <table class="data-table" id="bond-blotter-table">
+            <caption id="bond-blotter-caption" class="sr-only">Institutional Sovereign and Corporate Fixed Income Bond Desk Blotter</caption>
+            <thead>
+              <tr>
+                <th scope="col" style="text-align:left;">INSTRUMENT</th>
+                <th scope="col">CPN / MAT</th>
+                <th scope="col">CLEAN / DIRTY</th>
+                <th scope="col">YTM %</th>
+                <th scope="col">MOD DUR</th>
+                <th scope="col">CONVEXITY</th>
+                <th scope="col">DV01 ($)</th>
+                <th scope="col">Z-SPREAD</th>
+              </tr>
+            </thead>
+            <tbody id="bond-blotter-tbody"></tbody>
+          </table>
+        </div>
+
+        <form id="bond-calculator-form" class="sub-card" autocomplete="off">
+          <div style="display:flex; justify-content:space-between;">
+            <strong style="color:var(--amber);">CUSTOM BOND PRICER &amp; TAYLOR DURATION/CONVEXITY SHOCK (`POST /api/macro/bond-price`)</strong>
+            <span id="bond-calc-output" style="color:var(--emerald); font-weight:700;">CLEAN: $99.62 | DV01: $814.20</span>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="bond-cpn">COUPON (%)</label>
+              <input type="number" id="bond-cpn" step="0.05" value="4.35" required>
+            </div>
+            <div class="field">
+              <label for="bond-mat">MATURITY (YRS)</label>
+              <input type="number" id="bond-mat" step="0.5" value="10" required>
+            </div>
+            <div class="field">
+              <label for="bond-target-px">TARGET CLEAN PX ($)</label>
+              <input type="number" id="bond-target-px" step="0.01" value="98.50" required>
+            </div>
+            <button type="submit" class="btn btn-cyan">SOLVE YTM &amp; DV01 &lt;GO&gt;</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- PANE 3: LIMIT ORDER BOOK REPLAY TIME-MACHINE -->
+    <section class="pane" id="pane-replay" aria-labelledby="pane-replay-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE 3</span>
+          <h2 id="pane-replay-title" class="pane-title">LIMIT ORDER BOOK (LOB) REPLAY TIME-MACHINE &amp; DETERMINISTIC STATE HASH</h2>
+        </div>
+        <span id="replay-hash-badge" style="color:var(--cyan); font-size:10px; font-weight:700;">SHA256 DETERMINISTIC PROOF</span>
+      </header>
+      <div class="pane-body">
+        <div class="sub-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div>
+              <label for="replay-symbol-select" class="ctrl-label">SYMBOL</label>
+              <select id="replay-symbol-select" aria-label="Select Replay Symbol">
+                <option value="BTC-USD" selected>BTC-USD</option>
+                <option value="ETH-USD">ETH-USD</option>
+                <option value="SOL-USD">SOL-USD</option>
+                <option value="NVDA-EQ">NVDA-EQ</option>
+              </select>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button type="button" id="replay-prev-btn" class="btn">&laquo; STEP -1</button>
+              <button type="button" id="replay-play-btn" class="btn btn-emerald">PLAY REPLAY</button>
+              <button type="button" id="replay-next-btn" class="btn">STEP +1 &raquo;</button>
+            </div>
+            <span id="replay-seq-readout" style="color:var(--amber); font-weight:700;">SEQ #60 / 60</span>
+          </div>
+          <label for="replay-scrubber" class="sr-only">Orderbook Replay Sequence Scrubber</label>
+          <input type="range" id="replay-scrubber" min="1" max="60" value="60" style="width:100%;" aria-label="Orderbook Replay Sequence Scrubber">
+          <div id="replay-event-banner" style="font-size:11px; color:var(--text-secondary);"></div>
+        </div>
+
+        <div class="replay-ladder-grid">
+          <div class="ladder-col">
+            <div style="color:var(--emerald); font-weight:700; margin-bottom:4px;">HISTORICAL L2 BIDS (PRICE // SIZE)</div>
+            <div id="replay-bids-list"></div>
+          </div>
+          <div class="ladder-col">
+            <div style="color:var(--crimson); font-weight:700; margin-bottom:4px;">HISTORICAL L2 ASKS (PRICE // SIZE)</div>
+            <div id="replay-asks-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANE 4: INSTITUTIONAL DARK POOL CROSSING NETWORK (ARGUS-DARK-ATS) -->
+    <section class="pane" id="pane-darkpool" aria-labelledby="pane-dark-title">
+      <header class="pane-header">
+        <div class="pane-title-wrap">
+          <span class="pane-id">PANE 4</span>
+          <h2 id="pane-dark-title" class="pane-title">DARK POOL CROSSING NETWORK (`ARGUS-DARK-ATS`) // MIDPOINT PEG &amp; VPIN SHIELD</h2>
+        </div>
+        <span id="dark-shield-badge" style="color:var(--emerald); font-size:10px; font-weight:700;">ANTI-GAMING SHIELD: ARMED</span>
+      </header>
+      <div class="pane-body">
+        <form id="dark-order-form" class="sub-card" autocomplete="off">
+          <div style="display:flex; justify-content:space-between;">
+            <strong style="color:var(--amber);">SUBMIT INSTITUTIONAL DARK BLOCK ORDER (`POST /api/darkpool/orders`)</strong>
+            <span id="dark-mid-readout" style="color:var(--cyan);">NBBO MIDPOINT: $94,500.00</span>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="dark-side">SIDE</label>
+              <select id="dark-side">
+                <option value="BUY" selected>BUY BLOCK</option>
+                <option value="SELL">SELL BLOCK</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="dark-peg">PEG TYPE</label>
+              <select id="dark-peg">
+                <option value="MIDPOINT_PEG" selected>MIDPOINT_PEG</option>
+                <option value="VWAP_PEG">VWAP_PEG</option>
+                <option value="LIMIT_DARK">LIMIT_DARK</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="dark-size">BLOCK SIZE</label>
+              <input type="number" id="dark-size" step="0.1" value="3.5" required>
+            </div>
+            <div class="field">
+              <label for="dark-minqty">MIN QTY (MAQ)</label>
+              <input type="number" id="dark-minqty" step="0.1" value="0.5" required>
+            </div>
+            <button type="submit" class="btn btn-amber">CROSS DARK &lt;GO&gt;</button>
+          </div>
+          <div id="dark-exec-feedback" style="font-size:11px; color:var(--emerald);"></div>
+        </form>
+
+        <div tabindex="0" role="region" aria-labelledby="dark-prints-caption" class="table-wrapper">
+          <table class="data-table" id="dark-prints-table">
+            <caption id="dark-prints-caption" class="sr-only">Recent Dark Pool Midpoint Block Prints and Price Improvement Telemetry</caption>
+            <thead>
+              <tr>
+                <th scope="col" style="text-align:left;">PRINT ID // PEG</th>
+                <th scope="col">SYMBOL</th>
+                <th scope="col">SIDE</th>
+                <th scope="col">SIZE</th>
+                <th scope="col">MIDPOINT PX</th>
+                <th scope="col">LIT SWEEP PX</th>
+                <th scope="col">IMPROVEMENT (BPS)</th>
+                <th scope="col">SAVINGS ($)</th>
+              </tr>
+            </thead>
+            <tbody id="dark-prints-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      let replayTimer = null;
+      let currentReplaySymbol = 'BTC-USD';
+      let currentReplaySeq = 60;
+      let maxReplaySeq = 60;
+
+      async function loadMacroAndBonds() {
+        const regime = document.getElementById('macro-regime-select').value;
+        const shiftBps = Number(document.getElementById('macro-shift-bps').value || 0);
+        const res = await fetch(`/api/macro/yield-curve?regime=${encodeURIComponent(regime)}&shiftBps=${shiftBps}`);
+        const data = await res.json();
+
+        const p = data.nssParams || {};
+        document.getElementById('nss-params-badge').textContent =
+          `β0=${(p.beta0 * 100).toFixed(2)}% | β1=${(p.beta1 * 100).toFixed(2)}% | β2=${(p.beta2 * 100).toFixed(2)}% | β3=${(p.beta3 * 100).toFixed(2)}%`;
+
+        const sp = data.spreads || {};
+        document.getElementById('hdr-2s10s').textContent =
+          `${sp.spread2s10sBps >= 0 ? '+' : ''}${sp.spread2s10sBps} bps // ${sp.spread3m10yBps >= 0 ? '+' : ''}${sp.spread3m10yBps} bps`;
+        document.getElementById('hdr-butterfly').textContent = `${sp.butterfly2s5s10sBps} bps`;
+        document.getElementById('yc-inversion-flag').textContent =
+          sp.isInverted2s10s ? 'ALERT: 2s10s INVERTED' : 'SLOPE: NORMAL UPWARD';
+        document.getElementById('yc-inversion-flag').style.color =
+          sp.isInverted2s10s ? 'var(--crimson)' : 'var(--emerald)';
+
+        const ds = data.deskSummary || {};
+        document.getElementById('hdr-desk-dv01').textContent = `$${Number(ds.totalDv01Usd || 0).toLocaleString()} / bp`;
+        document.getElementById('hdr-desk-dur').textContent =
+          `${ds.portfolioModDuration} yrs // ${ds.portfolioConvexity}`;
+
+        const strip = document.getElementById('yc-tenors-strip');
+        strip.innerHTML = (data.points || []).map((pt) =>
+          `<span><strong style="color:var(--amber);">${pt.tenor}:</strong> ${pt.spotYieldPct.toFixed(2)}% <span style="color:var(--text-muted);">(f:${pt.forwardRatePct.toFixed(2)}%)</span></span>`
+        ).join('');
+
+        drawNssCurveCanvas(data.points || []);
+
+        const tbody = document.getElementById('bond-blotter-tbody');
+        tbody.innerHTML = (data.bonds || []).map((b) => `
+          <tr>
+            <th scope="row">${b.symbol} <span style="color:var(--text-muted);font-weight:400;">(${b.rating})</span></th>
+            <td>${b.couponPct.toFixed(2)}% // ${b.maturityYears}Y</td>
+            <td>$${b.cleanPrice.toFixed(2)} / $${b.dirtyPrice.toFixed(2)}</td>
+            <td style="color:var(--cyan);font-weight:700;">${b.ytmPct.toFixed(3)}%</td>
+            <td>${b.modifiedDuration.toFixed(2)}</td>
+            <td>${b.convexity.toFixed(2)}</td>
+            <td style="color:var(--amber);font-weight:700;">$${b.dv01Usd.toLocaleString()}</td>
+            <td style="color:var(--emerald);">+${b.zSpreadBps.toFixed(1)} bps</td>
+          </tr>
+        `).join('');
+      }
+
+      function drawNssCurveCanvas(points) {
+        const canvas = document.getElementById('nss-curve-canvas');
+        if (!canvas || !points.length) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.fillStyle = '#06080c';
+        ctx.fillRect(0, 0, w, h);
+
+        const padL = 46, padR = 20, padT = 24, padB = 28;
+        const plotW = w - padL - padR;
+        const plotH = h - padT - padB;
+
+        const allVals = points.flatMap((p) => [p.spotYieldPct, p.forwardRatePct]);
+        const minY = Math.min(...allVals) - 0.25;
+        const maxY = Math.max(...allVals) + 0.25;
+
+        ctx.strokeStyle = '#162032';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+          const y = padT + (plotH * i) / 4;
+          ctx.beginPath();
+          ctx.moveTo(padL, y);
+          ctx.lineTo(w - padR, y);
+          ctx.stroke();
+
+          const val = maxY - ((maxY - minY) * i) / 4;
+          ctx.fillStyle = '#64748b';
+          ctx.font = '10px monospace';
+          ctx.fillText(`${val.toFixed(2)}%`, 4, y + 3);
+        }
+
+        const xForIdx = (idx) => padL + (plotW * idx) / Math.max(1, points.length - 1);
+        const yForVal = (v) => padT + plotH * (1 - (v - minY) / Math.max(0.01, maxY - minY));
+
+        // Draw Forward Rate Curve (Cyan dashed)
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        points.forEach((p, i) => {
+          const x = xForIdx(i);
+          const y = yForVal(p.forwardRatePct);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Spot Yield Curve (Amber solid)
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        points.forEach((p, i) => {
+          const x = xForIdx(i);
+          const y = yForVal(p.spotYieldPct);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        points.forEach((p, i) => {
+          const x = xForIdx(i);
+          const y = yForVal(p.spotYieldPct);
+          ctx.fillStyle = '#f59e0b';
+          ctx.beginPath();
+          ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '10px monospace';
+          ctx.fillText(p.tenor, x - 10, h - 8);
+        });
+      }
+
+      async function loadReplayState(symbol, seq) {
+        const q = seq ? `&seq=${seq}` : '';
+        const res = await fetch(`/api/replay/state?symbol=${encodeURIComponent(symbol)}${q}`);
+        const state = await res.json();
+        if (!state || !state.orderbook) return;
+
+        currentReplaySeq = state.seq;
+        maxReplaySeq = state.maxSeq;
+        const scrubber = document.getElementById('replay-scrubber');
+        scrubber.min = state.minSeq;
+        scrubber.max = state.maxSeq;
+        scrubber.value = state.seq;
+
+        document.getElementById('replay-seq-readout').textContent = `SEQ #${state.seq} / ${state.maxSeq}`;
+        document.getElementById('hdr-replay-hash').textContent = `SEQ #${state.seq} // ${state.stateHash.slice(0, 8)}`;
+        document.getElementById('replay-hash-badge').textContent =
+          `HASH: ${state.stateHash} (${state.deterministicVerified ? 'VERIFIED' : 'MISMATCH'})`;
+
+        const ev = state.event || {};
+        document.getElementById('replay-event-banner').innerHTML =
+          `<strong style="color:var(--amber);">[${ev.eventType}]</strong> ${ev.side} ${ev.size} @ $${Number(ev.price || 0).toLocaleString()} | ` +
+          `MID: <strong style="color:var(--cyan);">$${state.orderbook.midPrice}</strong> | ` +
+          `MICRO-PX: <strong>$${state.orderbook.microPrice}</strong> | ` +
+          `OBI: <strong style="color:${state.orderbook.obi >= 0 ? 'var(--emerald)' : 'var(--crimson)'};">${state.orderbook.obiPct}%</strong>`;
+
+        document.getElementById('replay-bids-list').innerHTML = (state.orderbook.bids || []).slice(0, 8).map((b) =>
+          `<div class="ladder-row"><span style="color:var(--emerald);">$${Number(b.price).toFixed(2)}</span><span>${Number(b.size).toFixed(3)} (Σ ${Number(b.total).toFixed(2)})</span></div>`
+        ).join('');
+
+        document.getElementById('replay-asks-list').innerHTML = (state.orderbook.asks || []).slice(0, 8).map((a) =>
+          `<div class="ladder-row"><span style="color:var(--crimson);">$${Number(a.price).toFixed(2)}</span><span>${Number(a.size).toFixed(3)} (Σ ${Number(a.total).toFixed(2)})</span></div>`
+        ).join('');
+      }
+
+      async function loadDarkPoolStatus(symbol = 'BTC-USD') {
+        const res = await fetch(`/api/darkpool/status?symbol=${encodeURIComponent(symbol)}`);
+        const data = await res.json();
+        if (!data) return;
+
+        const mid = data.litReference ? data.litReference.midpoint : 94500;
+        document.getElementById('dark-mid-readout').textContent = `NBBO MIDPOINT: $${Number(mid).toLocaleString()}`;
+        document.getElementById('hdr-dark-savings').textContent =
+          `+$${Number(data.metrics?.totalPriceImprovementUsd || 0).toLocaleString()} (${data.metrics?.avgPriceImprovementBps || 0} bps)`;
+
+        const tbody = document.getElementById('dark-prints-tbody');
+        tbody.innerHTML = (data.recentPrints || []).slice(0, 8).map((p) => `
+          <tr>
+            <th scope="row">${p.id} <span style="color:var(--text-muted);font-weight:400;">(${p.pegType})</span></th>
+            <td>${p.symbol}</td>
+            <td style="color:${p.side === 'BUY' ? 'var(--emerald)' : 'var(--crimson)'};font-weight:700;">${p.side}</td>
+            <td>${p.size}</td>
+            <td style="color:var(--cyan);font-weight:700;">$${Number(p.executionPrice).toLocaleString()}</td>
+            <td>$${Number(p.litSweepPrice).toLocaleString()}</td>
+            <td style="color:var(--emerald);">+${p.priceImprovementBps} bps</td>
+            <td style="color:var(--amber);font-weight:700;">+$${Number(p.priceImprovementUsd).toLocaleString()}</td>
+          </tr>
+        `).join('');
+      }
+
+      document.getElementById('apply-macro-btn').addEventListener('click', loadMacroAndBonds);
+      document.getElementById('macro-regime-select').addEventListener('change', loadMacroAndBonds);
+
+      document.getElementById('bond-calculator-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const couponRate = Number(document.getElementById('bond-cpn').value) / 100;
+        const maturityYears = Number(document.getElementById('bond-mat').value);
+        const cleanPrice = Number(document.getElementById('bond-target-px').value);
+        const res = await fetch('/api/macro/bond-price', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ couponRate, maturityYears, cleanPrice, notionalUsd: 1000000 })
+        });
+        const out = await res.json();
+        document.getElementById('bond-calc-output').textContent =
+          `SOLVED YTM: ${out.ytmPct}% | MOD DUR: ${out.modifiedDuration}y | DV01: $${out.dv01Usd} | Z-SPREAD: +${out.zSpreadBps} bps`;
+      });
+
+      document.getElementById('replay-scrubber').addEventListener('input', (e) => {
+        loadReplayState(currentReplaySymbol, Number(e.target.value));
+      });
+      document.getElementById('replay-symbol-select').addEventListener('change', (e) => {
+        currentReplaySymbol = e.target.value;
+        loadReplayState(currentReplaySymbol, null);
+        loadDarkPoolStatus(currentReplaySymbol);
+      });
+      document.getElementById('replay-prev-btn').addEventListener('click', () => {
+        loadReplayState(currentReplaySymbol, Math.max(1, currentReplaySeq - 1));
+      });
+      document.getElementById('replay-next-btn').addEventListener('click', () => {
+        loadReplayState(currentReplaySymbol, Math.min(maxReplaySeq, currentReplaySeq + 1));
+      });
+      document.getElementById('replay-play-btn').addEventListener('click', (e) => {
+        if (replayTimer) {
+          clearInterval(replayTimer);
+          replayTimer = null;
+          e.target.textContent = 'PLAY REPLAY';
+          return;
+        }
+        e.target.textContent = 'PAUSE REPLAY';
+        if (currentReplaySeq >= maxReplaySeq) currentReplaySeq = 1;
+        replayTimer = setInterval(() => {
+          if (currentReplaySeq >= maxReplaySeq) {
+            clearInterval(replayTimer);
+            replayTimer = null;
+            e.target.textContent = 'PLAY REPLAY';
+            return;
+          }
+          loadReplayState(currentReplaySymbol, currentReplaySeq + 1);
+        }, 280);
+      });
+
+      document.getElementById('dark-order-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const side = document.getElementById('dark-side').value;
+        const pegType = document.getElementById('dark-peg').value;
+        const size = Number(document.getElementById('dark-size').value);
+        const minQty = Number(document.getElementById('dark-minqty').value);
+        const res = await fetch('/api/darkpool/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: currentReplaySymbol, side, pegType, size, minQty })
+        });
+        const out = await res.json();
+        document.getElementById('dark-exec-feedback').textContent =
+          `STATUS: ${out.order?.status} | CROSSED: ${out.crossedVolume} @ $${out.executionPrice} | SAVINGS: +$${out.totalPriceImprovementUsd}`;
+        loadDarkPoolStatus(currentReplaySymbol);
+        loadReplayState(currentReplaySymbol, null);
+      });
+
+      loadMacroAndBonds();
+      loadReplayState('BTC-USD', 60);
+      loadDarkPoolStatus('BTC-USD');
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "argus-terminal",
+  "version": "1.0.0",
+  "description": "Educational, local-only simulation of a Bloomberg-style trading terminal: FIFO order book, SQLite, WebSocket UI. Simulated data only.",
+  "license": "MIT",
+  "author": "Ardhya Novri Ramadhan",
+  "main": "src/server/index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/server/index.js",
+    "test": "node tests/e2e.test.js && node tests/security_pentest_poc.js && node tests/devtools_audit.test.js && node tests/wave2_quant.test.js && node tests/wave3_derivatives_fix.test.js && node tests/wave4_macro_replay_darkpool.test.js",
+    "test:e2e": "node tests/e2e.test.js",
+    "test:wave2": "node tests/wave2_quant.test.js",
+    "test:wave3": "node tests/wave3_derivatives_fix.test.js",
+    "test:wave4": "node tests/wave4_macro_replay_darkpool.test.js",
+    "test:devtools": "node tests/devtools_audit.test.js",
+    "test:security": "node tests/security_pentest_poc.js",
+    "bench": "node --expose-gc benchmarks/matching_bench.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
