@@ -7,6 +7,100 @@
  */
 
 const { roundToTick } = require('../db/database');
+const { isFiniteNumber, logDiagnostic } = require('./validation');
+
+/**
+ * Computes institutional return risk metrics (mean, variance, stdDev, Sharpe, Sortino, historical VaR/CVaR)
+ * with zero-variance / division-by-zero guards and empty-array safety.
+ *
+ * @param {number[]} [returns=[]]
+ * @param {{ riskFreeRate?: number, annualizationFactor?: number }} [options={}]
+ */
+function computeReturnRiskMetrics(returns = [], options = {}) {
+  if (!Array.isArray(returns)) {
+    throw new TypeError('Invalid returns: expected an array of numbers');
+  }
+  const rf = options.riskFreeRate !== undefined ? Number(options.riskFreeRate) : 0;
+  const annFactor = options.annualizationFactor !== undefined ? Number(options.annualizationFactor) : Math.sqrt(252);
+  if (!Number.isFinite(rf) || !Number.isFinite(annFactor) || annFactor <= 0) {
+    throw new RangeError('Invalid riskFreeRate or annualizationFactor');
+  }
+
+  const clean = [];
+  for (let i = 0; i < returns.length; i++) {
+    const val = returns[i];
+    if (typeof val === 'boolean' || !isFiniteNumber(val)) {
+      throw new RangeError(`Invalid return value at index ${i}: must be a finite number`);
+    }
+    clean.push(Number(val));
+  }
+
+  const n = clean.length;
+  if (n === 0) {
+    return {
+      count: 0,
+      meanReturn: 0,
+      variance: 0,
+      stdDev: 0,
+      downsideStdDev: 0,
+      sharpeRatio: 0,
+      sortinoRatio: 0,
+      historicalVar95: 0,
+      historicalVar99: 0,
+      historicalCvar99: 0
+    };
+  }
+
+  const meanReturn = clean.reduce((a, b) => a + b, 0) / n;
+  const excessMean = meanReturn - rf / (annFactor * annFactor);
+
+  let sumSq = 0;
+  let downsideSq = 0;
+  for (let i = 0; i < n; i++) {
+    const diff = clean[i] - meanReturn;
+    sumSq += diff * diff;
+    if (clean[i] < 0) {
+      downsideSq += clean[i] * clean[i];
+    }
+  }
+
+  const variance = n > 1 ? sumSq / (n - 1) : 0;
+  const stdDev = Math.sqrt(Math.max(0, variance));
+  const downsideStdDev = Math.sqrt(Math.max(0, downsideSq / n));
+
+  const sharpeRatio = stdDev > 1e-12 ? Number(((excessMean / stdDev) * annFactor).toFixed(4)) : 0;
+  const sortinoRatio = downsideStdDev > 1e-12 ? Number(((excessMean / downsideStdDev) * annFactor).toFixed(4)) : 0;
+
+  const losses = clean.map((r) => -r).sort((a, b) => a - b);
+  const idx95 = Math.min(n - 1, Math.floor(0.95 * n));
+  const idx99 = Math.min(n - 1, Math.floor(0.99 * n));
+  const historicalVar95 = Math.max(0, Number(losses[idx95].toFixed(6)));
+  const historicalVar99 = Math.max(0, Number(losses[idx99].toFixed(6)));
+
+  let tailSum = 0;
+  let tailCount = 0;
+  for (let i = idx99; i < n; i++) {
+    tailSum += losses[i];
+    tailCount += 1;
+  }
+  const historicalCvar99 = Math.max(
+    historicalVar99,
+    tailCount > 0 ? Number((tailSum / tailCount).toFixed(6)) : historicalVar99
+  );
+
+  return {
+    count: n,
+    meanReturn: Number(meanReturn.toFixed(8)),
+    variance: Number(variance.toFixed(10)),
+    stdDev: Number(stdDev.toFixed(8)),
+    downsideStdDev: Number(downsideStdDev.toFixed(8)),
+    sharpeRatio,
+    sortinoRatio,
+    historicalVar95,
+    historicalVar99,
+    historicalCvar99
+  };
+}
 
 // Annualized & Daily Volatility Priors by Symbol (blended with empirical SQLite candle returns)
 const DAILY_VOL_PRIORS = {
@@ -46,7 +140,7 @@ function createSeededPrng(seed = 1337) {
  */
 function boxMullerPair(randFn) {
   let u1 = randFn();
-  let u2 = randFn();
+  const u2 = randFn();
   if (u1 < 1e-12) u1 = 1e-12;
   const radius = Math.sqrt(-2.0 * Math.log(u1));
   const theta = 2.0 * Math.PI * u2;
@@ -123,15 +217,126 @@ function estimateAssetReturnStats(db, symbol) {
       dailyDrift: Number(dailyDrift.toFixed(6)),
       annualizedSigma: Number((blendedDailySigma * Math.sqrt(252)).toFixed(4))
     };
-  } catch (_) {
+  } catch (err) {
+    logDiagnostic('quantRisk', 'estimateAssetReturnStats_fallback', err);
     return { dailySigma: priorSigma, dailyDrift: 0.0004, annualizedSigma: priorSigma * Math.sqrt(252) };
   }
+}
+
+/**
+ * Builds K x K correlation matrix for portfolio assets.
+ * @param {Array<{ symbol: string }>} assetBreakdown
+ */
+function buildCorrelationMatrix(assetBreakdown) {
+  const K = assetBreakdown.length;
+  return Array.from({ length: K }, (_, i) => {
+    const row = new Float64Array(K);
+    const symI = assetBreakdown[i].symbol;
+    for (let j = 0; j < K; j++) {
+      const symJ = assetBreakdown[j].symbol;
+      row[j] = i === j ? 1.0 : (CORRELATION_PRIORS[symI]?.[symJ] ?? 0.35);
+    }
+    return row;
+  });
+}
+
+/**
+ * Computes Parametric (Variance-Covariance) 1-day VaR 95%/99% and CVaR 99%.
+ * @param {Array<Record<string, any>>} assetBreakdown
+ * @param {Float64Array[]} corrMatrix
+ */
+function computeParametricPortfolioVaR(assetBreakdown, corrMatrix) {
+  const K = assetBreakdown.length;
+  let portfolioVariance = 0;
+  let portfolioExpectedDriftDollar = 0;
+  for (let i = 0; i < K; i++) {
+    const wi = assetBreakdown[i].signedNotional;
+    const si = assetBreakdown[i].dailySigma;
+    portfolioExpectedDriftDollar += wi * assetBreakdown[i].dailyDrift;
+    for (let j = 0; j < K; j++) {
+      const wj = assetBreakdown[j].signedNotional;
+      const sj = assetBreakdown[j].dailySigma;
+      portfolioVariance += wi * wj * si * sj * corrMatrix[i][j];
+    }
+  }
+
+  const portfolioDailySigmaDollar = Math.sqrt(Math.max(1, portfolioVariance));
+  const z95 = 1.6448536;
+  const z99 = 2.3263479;
+  const es99Factor = 2.6652142;
+
+  const paramVar95 = Math.max(0, z95 * portfolioDailySigmaDollar - portfolioExpectedDriftDollar);
+  const paramVar99 = Math.max(0, z99 * portfolioDailySigmaDollar - portfolioExpectedDriftDollar);
+  const paramCvar99 = Math.max(0, es99Factor * portfolioDailySigmaDollar - portfolioExpectedDriftDollar);
+
+  return { portfolioDailySigmaDollar, paramVar95, paramVar99, paramCvar99 };
+}
+
+/**
+ * Simulates Correlated Monte Carlo paths via Box-Muller + Cholesky decomposition.
+ * @param {Array<Record<string, any>>} assetBreakdown
+ * @param {Float64Array[]} corrMatrix
+ * @param {number} numPaths
+ * @param {number} seedBase
+ */
+function simulateCorrelatedMonteCarloVaR(assetBreakdown, corrMatrix, numPaths, seedBase) {
+  const K = assetBreakdown.length;
+  const L = choleskyDecomposition(corrMatrix);
+  const losses = new Float64Array(numPaths);
+  const rand = createSeededPrng(seedBase);
+  const zVec = new Float64Array(K);
+
+  for (let m = 0; m < numPaths; m++) {
+    for (let k = 0; k < K; k += 2) {
+      const [n1, n2] = boxMullerPair(rand);
+      zVec[k] = n1;
+      if (k + 1 < K) zVec[k + 1] = n2;
+    }
+
+    let pathPnl = 0;
+    for (let i = 0; i < K; i++) {
+      let correlatedZ = 0;
+      const Li = L[i];
+      for (let j = 0; j <= i; j++) {
+        correlatedZ += Li[j] * zVec[j];
+      }
+      const asset = assetBreakdown[i];
+      const sigma = asset.dailySigma;
+      const mu = asset.dailyDrift;
+      const logRet = (mu - 0.5 * sigma * sigma) + sigma * correlatedZ;
+      const simpleRet = Math.expm1(logRet);
+      pathPnl += asset.signedNotional * simpleRet;
+    }
+    losses[m] = -pathPnl;
+  }
+
+  losses.sort();
+
+  const idx95 = Math.min(numPaths - 1, Math.floor(0.95 * numPaths));
+  const idx99 = Math.min(numPaths - 1, Math.floor(0.99 * numPaths));
+  const mcVar95 = Math.max(0, losses[idx95]);
+  const mcVar99 = Math.max(0, losses[idx99]);
+
+  let tailSum = 0;
+  let tailCount = 0;
+  for (let idx = idx99; idx < numPaths; idx++) {
+    tailSum += losses[idx];
+    tailCount += 1;
+  }
+  const mcCvar99 = Math.max(mcVar99, tailCount > 0 ? tailSum / tailCount : mcVar99 * 1.14);
+  const worstPathLoss = Math.max(0, losses[numPaths - 1]);
+  const bestPathGain = Math.max(0, -losses[0]);
+
+  return { mcVar95, mcVar99, mcCvar99, worstPathLoss, bestPathGain };
 }
 
 /**
  * Compute Parametric (Variance-Covariance) & 10,000-Path Monte Carlo VaR / CVaR
  */
 function computePortfolioVaR(db, engine, marketSim, accountId = 'ACC-INST-01', pathsCount = 10000) {
+  if (pathsCount !== undefined && (typeof pathsCount === 'boolean' || !isFiniteNumber(pathsCount) || Number(pathsCount) <= 0)) {
+    throw new RangeError('Invalid pathsCount: must be a positive finite number');
+  }
   let accountRow = db ? db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) : null;
   if (!accountRow && db) {
     accountRow = db.prepare('SELECT * FROM accounts LIMIT 1').get();
@@ -189,101 +394,17 @@ function computePortfolioVaR(db, engine, marketSim, accountId = 'ACC-INST-01', p
   });
 
   const equity = Math.max(10000, cashBalance + netExposure);
-  const K = assetBreakdown.length;
+  const corrMatrix = buildCorrelationMatrix(assetBreakdown);
+  const { portfolioDailySigmaDollar, paramVar95, paramVar99, paramCvar99 } = computeParametricPortfolioVaR(assetBreakdown, corrMatrix);
 
-  // Build K x K correlation matrix
-  const corrMatrix = Array.from({ length: K }, (_, i) => {
-    const row = new Float64Array(K);
-    const symI = assetBreakdown[i].symbol;
-    for (let j = 0; j < K; j++) {
-      const symJ = assetBreakdown[j].symbol;
-      if (i === j) {
-        row[j] = 1.0;
-      } else {
-        row[j] = CORRELATION_PRIORS[symI]?.[symJ] ?? 0.35;
-      }
-    }
-    return row;
-  });
-
-  // 1. Parametric Variance-Covariance VaR & CVaR
-  let portfolioVariance = 0;
-  let portfolioExpectedDriftDollar = 0;
-  for (let i = 0; i < K; i++) {
-    const wi = assetBreakdown[i].signedNotional;
-    const si = assetBreakdown[i].dailySigma;
-    portfolioExpectedDriftDollar += wi * assetBreakdown[i].dailyDrift;
-    for (let j = 0; j < K; j++) {
-      const wj = assetBreakdown[j].signedNotional;
-      const sj = assetBreakdown[j].dailySigma;
-      portfolioVariance += wi * wj * si * sj * corrMatrix[i][j];
-    }
-  }
-
-  const portfolioDailySigmaDollar = Math.sqrt(Math.max(1, portfolioVariance));
-  const z95 = 1.6448536;
-  const z99 = 2.3263479;
-  // Standard Normal PDF at z99 divided by (1 - 0.99): phi(2.3263479) / 0.01 = 2.6652142
-  const es99Factor = 2.6652142;
-
-  const paramVar95 = Math.max(0, z95 * portfolioDailySigmaDollar - portfolioExpectedDriftDollar);
-  const paramVar99 = Math.max(0, z99 * portfolioDailySigmaDollar - portfolioExpectedDriftDollar);
-  const paramCvar99 = Math.max(0, es99Factor * portfolioDailySigmaDollar - portfolioExpectedDriftDollar);
-
-  // 2. 10,000-Path Correlated Monte Carlo Simulation (Box-Muller + Cholesky)
-  const L = choleskyDecomposition(corrMatrix);
   const numPaths = Math.max(1000, Math.min(25000, Number(pathsCount) || 10000));
-  const losses = new Float64Array(numPaths);
-
   const seedBase = Math.floor(Math.abs(grossExposure) + (marketSim ? marketSim.tickCount * 17 : 101));
-  const rand = createSeededPrng(seedBase);
-  const zVec = new Float64Array(K);
-
-  for (let m = 0; m < numPaths; m++) {
-    // Fill independent standard normals via Box-Muller
-    for (let k = 0; k < K; k += 2) {
-      const [n1, n2] = boxMullerPair(rand);
-      zVec[k] = n1;
-      if (k + 1 < K) zVec[k + 1] = n2;
-    }
-
-    let pathPnl = 0;
-    for (let i = 0; i < K; i++) {
-      let correlatedZ = 0;
-      const Li = L[i];
-      for (let j = 0; j <= i; j++) {
-        correlatedZ += Li[j] * zVec[j];
-      }
-      const asset = assetBreakdown[i];
-      const sigma = asset.dailySigma;
-      const mu = asset.dailyDrift;
-      const logRet = (mu - 0.5 * sigma * sigma) + sigma * correlatedZ;
-      const simpleRet = Math.expm1(logRet);
-      pathPnl += asset.signedNotional * simpleRet;
-    }
-
-    // Loss is negative PnL
-    losses[m] = -pathPnl;
-  }
-
-  // Sort simulated losses ascending (worst positive losses at the tail end)
-  losses.sort();
-
-  const idx95 = Math.min(numPaths - 1, Math.floor(0.95 * numPaths));
-  const idx99 = Math.min(numPaths - 1, Math.floor(0.99 * numPaths));
-  const mcVar95 = Math.max(0, losses[idx95]);
-  const mcVar99 = Math.max(0, losses[idx99]);
-
-  // Expected Shortfall (CVaR 99%): average of the worst 1% paths
-  let tailSum = 0;
-  let tailCount = 0;
-  for (let idx = idx99; idx < numPaths; idx++) {
-    tailSum += losses[idx];
-    tailCount += 1;
-  }
-  const mcCvar99 = Math.max(mcVar99, tailCount > 0 ? tailSum / tailCount : mcVar99 * 1.14);
-  const worstPathLoss = Math.max(0, losses[numPaths - 1]);
-  const bestPathGain = Math.max(0, -losses[0]);
+  const { mcVar95, mcVar99, mcCvar99, worstPathLoss, bestPathGain } = simulateCorrelatedMonteCarloVaR(
+    assetBreakdown,
+    corrMatrix,
+    numPaths,
+    seedBase
+  );
 
   const varLimitDollar = equity * 0.05; // Institutional 5% daily NAV VaR limit
   const varUtilizationPct = Number(Math.min(999, (mcVar99 / Math.max(1, varLimitDollar)) * 100).toFixed(2));
@@ -647,6 +768,9 @@ function computeQuantRiskReport({ db, engine, marketSim, accountId = 'ACC-INST-0
  * Supports: EMA_CROSS, MEAN_REVERSION_BOLLINGER, AVELLANEDA_MM
  */
 function runStrategyBacktest(db, params = {}) {
+  if (params.initialCapital !== undefined && (typeof params.initialCapital === 'boolean' || !isFiniteNumber(params.initialCapital) || Number(params.initialCapital) <= 0)) {
+    throw new RangeError('Invalid initialCapital: must be a positive finite number');
+  }
   const symbol = String(params.symbol || 'BTC-USD').toUpperCase();
   const strategy = String(params.strategy || 'EMA_CROSS').toUpperCase();
   const initialCapital = Math.max(1000, Number(params.initialCapital || 1000000));
@@ -661,7 +785,8 @@ function runStrategyBacktest(db, params = {}) {
         ORDER BY time ASC
         LIMIT 500
       `).all(symbol);
-    } catch (_) {
+    } catch (err) {
+      logDiagnostic('quantRisk', 'runStrategyBacktest_candles_fallback', err);
       candles = [];
     }
   }
@@ -1012,6 +1137,7 @@ module.exports = {
   CORRELATION_PRIORS,
   choleskyDecomposition,
   boxMullerPair,
+  computeReturnRiskMetrics,
   estimateAssetReturnStats,
   computePortfolioVaR,
   computeMicrostructureAlpha,

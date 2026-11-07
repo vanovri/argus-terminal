@@ -49,48 +49,214 @@ function normCdf(x) {
   return isNegative ? 1.0 - cdfPos : cdfPos;
 }
 
+const { isFiniteNumber } = require('./validation');
+
+/**
+ * Parses and validates Black-Scholes-Merton inputs from object or positional arguments.
+ * @param {any} arg0
+ * @param {any} arg1
+ * @param {any} arg2
+ * @param {any} arg3
+ * @param {any} arg4
+ * @param {any} arg5
+ * @param {any} arg6
+ */
+function parseAndValidateBsmInputs(arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
+  let rawS;
+  let rawK;
+  let rawT;
+  let r = 0.045;
+  let q = 0.0;
+  let rawSigma;
+  let type = 'CALL';
+
+  if (arg0 && typeof arg0 === 'object') {
+    rawS = arg0.S ?? arg0.spot ?? arg0.spotPrice;
+    rawK = arg0.K ?? arg0.strike ?? arg0.strikePrice;
+    rawT = arg0.T ?? arg0.timeToExpiry ?? arg0.tau;
+    if (arg0.r !== undefined || arg0.rate !== undefined) {
+      const rVal = arg0.r ?? arg0.rate;
+      if (!isFiniteNumber(rVal)) throw new RangeError('Invalid risk-free rate r: must be a finite number');
+      r = Number(rVal);
+    }
+    if (arg0.q !== undefined || arg0.dividendYield !== undefined) {
+      const qVal = arg0.q ?? arg0.dividendYield;
+      if (!isFiniteNumber(qVal)) throw new RangeError('Invalid dividend yield q: must be a finite number');
+      q = Number(qVal);
+    }
+    rawSigma = arg0.sigma ?? arg0.vol ?? arg0.iv ?? arg0.volatility;
+    const rawType = arg0.type ?? arg0.optionType ?? (arg0.isCall === false ? 'PUT' : 'CALL');
+    type = String(rawType).toUpperCase().startsWith('P') ? 'PUT' : 'CALL';
+  } else {
+    rawS = arg0;
+    rawK = arg1;
+    rawT = arg2;
+    if (arg3 !== undefined) {
+      if (!isFiniteNumber(arg3)) throw new RangeError('Invalid risk-free rate r: must be a finite number');
+      r = Number(arg3);
+    }
+    rawSigma = arg4;
+    type = String(arg5 || 'CALL').toUpperCase().startsWith('P') ? 'PUT' : 'CALL';
+    if (arg6 !== undefined) {
+      if (!isFiniteNumber(arg6)) throw new RangeError('Invalid dividend yield q: must be a finite number');
+      q = Number(arg6);
+    }
+  }
+
+  const S = rawS === undefined ? 94500 : Number(rawS);
+  if (rawS !== undefined && (!isFiniteNumber(rawS) || S <= 0)) {
+    throw new RangeError('Invalid spot price S: must be a positive finite number');
+  }
+
+  const K = rawK === undefined ? S : Number(rawK);
+  if (rawK !== undefined && (!isFiniteNumber(rawK) || K <= 0)) {
+    throw new RangeError('Invalid strike price K: must be a positive finite number');
+  }
+
+  const T = rawT === undefined ? 30 / DAYS_PER_YEAR : Number(rawT);
+  if (rawT !== undefined && (!isFiniteNumber(rawT) || T < 0)) {
+    throw new RangeError('Invalid timeToExpiry T: must be a non-negative finite number');
+  }
+
+  const sigma = rawSigma === undefined ? 0.60 : Number(rawSigma);
+  if (rawSigma !== undefined && (!isFiniteNumber(rawSigma) || sigma < 0)) {
+    throw new RangeError('Invalid volatility sigma: must be a non-negative finite number');
+  }
+
+  return { S, K, T, r, q, sigma, type };
+}
+
+/**
+ * Builds deterministic boundary-case BSM result when T === 0 (at expiry) or sigma === 0 (zero volatility).
+ * @param {{ S: number, K: number, T: number, r: number, q: number, sigma: number, type: string }} params
+ */
+function buildBoundaryBsmResult({ S, K, T, r, q, sigma, type }) {
+  const dfR = T > 0 ? Math.exp(-r * T) : 1.0;
+  const dfQ = T > 0 ? Math.exp(-q * T) : 1.0;
+  const forwardDiff = S * dfQ - K * dfR;
+  const callPrice = Math.max(0, forwardDiff);
+  const putPrice = Math.max(0, -forwardDiff);
+  const callIntrinsic = Math.max(0, S - K);
+  const putIntrinsic = Math.max(0, K - S);
+
+  const callDelta = forwardDiff > 0 ? dfQ : forwardDiff < 0 ? 0.0 : 0.5 * dfQ;
+  const putDelta = forwardDiff < 0 ? -dfQ : forwardDiff > 0 ? 0.0 : -0.5 * dfQ;
+  const d1 = forwardDiff > 0 ? Infinity : forwardDiff < 0 ? -Infinity : 0;
+  const d2 = d1;
+
+  const callRhoRaw = T > 0 && forwardDiff > 0 ? K * T * dfR : 0;
+  const putRhoRaw = T > 0 && forwardDiff < 0 ? -K * T * dfR : 0;
+  const callRho = callRhoRaw / 100.0;
+  const putRho = putRhoRaw / 100.0;
+
+  const callThetaAnnual = T > 0 && forwardDiff > 0 ? -r * K * dfR + q * S * dfQ : 0;
+  const putThetaAnnual = T > 0 && forwardDiff < 0 ? r * K * dfR - q * S * dfQ : 0;
+  const callTheta = callThetaAnnual / DAYS_PER_YEAR;
+  const putTheta = putThetaAnnual / DAYS_PER_YEAR;
+
+  const callLeg = {
+    type: 'CALL',
+    price: callPrice,
+    intrinsicValue: callIntrinsic,
+    timeValue: Math.max(0, callPrice - callIntrinsic),
+    delta: callDelta,
+    gamma: 0,
+    vega: 0,
+    vegaRaw: 0,
+    theta: callTheta,
+    thetaAnnual: callThetaAnnual,
+    rho: callRho,
+    rhoRaw: callRhoRaw,
+    vanna: 0,
+    charm: 0,
+    charmAnnual: 0,
+    vomma: 0,
+    volga: 0
+  };
+
+  const putLeg = {
+    type: 'PUT',
+    price: putPrice,
+    intrinsicValue: putIntrinsic,
+    timeValue: Math.max(0, putPrice - putIntrinsic),
+    delta: putDelta,
+    gamma: 0,
+    vega: 0,
+    vegaRaw: 0,
+    theta: putTheta,
+    thetaAnnual: putThetaAnnual,
+    rho: putRho,
+    rhoRaw: putRhoRaw,
+    vanna: 0,
+    charm: 0,
+    charmAnnual: 0,
+    vomma: 0,
+    volga: 0
+  };
+
+  const activeLeg = type === 'PUT' ? putLeg : callLeg;
+  const putCallParityLHS = callPrice - putPrice;
+  const putCallParityRHS = S * dfQ - K * dfR;
+  const putCallParityError = Math.abs(putCallParityLHS - putCallParityRHS);
+
+  return {
+    S,
+    K,
+    T,
+    r,
+    q,
+    sigma,
+    type,
+    d1,
+    d2,
+    price: activeLeg.price,
+    intrinsicValue: activeLeg.intrinsicValue,
+    timeValue: activeLeg.timeValue,
+    delta: activeLeg.delta,
+    gamma: 0,
+    vega: 0,
+    vegaRaw: 0,
+    theta: activeLeg.theta,
+    thetaAnnual: activeLeg.thetaAnnual,
+    rho: activeLeg.rho,
+    rhoRaw: activeLeg.rhoRaw,
+    vanna: 0,
+    charm: 0,
+    charmAnnual: 0,
+    vomma: 0,
+    volga: 0,
+    callPrice,
+    putPrice,
+    callDelta,
+    putDelta,
+    callTheta,
+    putTheta,
+    callRho,
+    putRho,
+    call: callLeg,
+    put: putLeg,
+    putCallParityLHS,
+    putCallParityRHS,
+    putCallParityError,
+    putCallParityVerified: putCallParityError < 1e-8
+  };
+}
+
 /**
  * Exact Black-Scholes-Merton Option Pricing + 1st & 2nd-Order Institutional Greeks + Put-Call Parity Proof.
  * Supports object arguments `{ S, K, T, r = 0.045, q = 0.0, sigma, type = 'CALL' }` or positional `(S, K, T, r, sigma, type, q)`.
  */
 function priceBlackScholes(arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
-  let S;
-  let K;
-  let T;
-  let r = 0.045;
-  let q = 0.0;
-  let sigma = 0.60;
-  let type = 'CALL';
+  const { S, K, T, r, q, sigma, type } = parseAndValidateBsmInputs(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
 
-  if (arg0 && typeof arg0 === 'object') {
-    S = Number(arg0.S ?? arg0.spot ?? arg0.spotPrice ?? 94500);
-    K = Number(arg0.K ?? arg0.strike ?? arg0.strikePrice ?? S);
-    T = Number(arg0.T ?? arg0.timeToExpiry ?? arg0.tau ?? (30 / DAYS_PER_YEAR));
-    if (arg0.r !== undefined || arg0.rate !== undefined) {
-      r = Number(arg0.r ?? arg0.rate);
-    }
-    if (arg0.q !== undefined || arg0.dividendYield !== undefined) {
-      q = Number(arg0.q ?? arg0.dividendYield);
-    }
-    if (arg0.sigma !== undefined || arg0.vol !== undefined || arg0.iv !== undefined || arg0.volatility !== undefined) {
-      sigma = Number(arg0.sigma ?? arg0.vol ?? arg0.iv ?? arg0.volatility);
-    }
-    const rawType = arg0.type ?? arg0.optionType ?? (arg0.isCall === false ? 'PUT' : 'CALL');
-    type = String(rawType).toUpperCase().startsWith('P') ? 'PUT' : 'CALL';
-  } else {
-    S = Number(arg0 || 94500);
-    K = Number(arg1 || S);
-    T = Number(arg2 || (30 / DAYS_PER_YEAR));
-    r = arg3 !== undefined ? Number(arg3) : 0.045;
-    sigma = arg4 !== undefined ? Number(arg4) : 0.60;
-    type = String(arg5 || 'CALL').toUpperCase().startsWith('P') ? 'PUT' : 'CALL';
-    q = arg6 !== undefined ? Number(arg6) : 0.0;
+  if (T <= 0 || sigma <= 0) {
+    return buildBoundaryBsmResult({ S, K, T, r, q, sigma, type });
   }
 
-  const safeS = Math.max(1e-9, S);
-  const safeK = Math.max(1e-9, K);
-  const safeT = Math.max(1e-7, T);
-  const safeSigma = Math.max(1e-6, sigma);
+  const safeS = S;
+  const safeK = K;
+  const safeT = T;
+  const safeSigma = sigma;
   const sqrtT = Math.sqrt(safeT);
   const sigSqrtT = safeSigma * sqrtT;
 
@@ -255,7 +421,20 @@ function solveImpliedVolatility(arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
   let tol = 1e-8;
 
   if (arg0 && typeof arg0 === 'object') {
-    targetPrice = Number(arg0.targetPrice ?? arg0.marketPrice ?? arg0.optionPrice ?? arg0.price ?? 0);
+    const rawTarget = arg0.targetPrice ?? arg0.marketPrice ?? arg0.optionPrice ?? arg0.price;
+    if (!isFiniteNumber(rawTarget) || Number(rawTarget) <= 0) {
+      throw new RangeError('Invalid targetPrice: must be a positive finite number');
+    }
+    targetPrice = Number(rawTarget);
+    if (arg0.S !== undefined && (!isFiniteNumber(arg0.S) || Number(arg0.S) <= 0)) {
+      throw new RangeError('Invalid spot S: must be a positive finite number');
+    }
+    if (arg0.K !== undefined && (!isFiniteNumber(arg0.K) || Number(arg0.K) <= 0)) {
+      throw new RangeError('Invalid strike K: must be a positive finite number');
+    }
+    if (arg0.T !== undefined && (!isFiniteNumber(arg0.T) || Number(arg0.T) <= 0)) {
+      throw new RangeError('Invalid timeToExpiry T: must be a positive finite number');
+    }
     S = Number(arg0.S ?? arg0.spot ?? arg0.spotPrice ?? 94500);
     K = Number(arg0.K ?? arg0.strike ?? arg0.strikePrice ?? S);
     T = Number(arg0.T ?? arg0.timeToExpiry ?? arg0.tau ?? (30 / DAYS_PER_YEAR));
@@ -270,7 +449,13 @@ function solveImpliedVolatility(arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
     if (arg0.maxIter !== undefined) maxIter = Math.min(12, Math.max(1, Number(arg0.maxIter)));
     if (arg0.tol !== undefined) tol = Number(arg0.tol);
   } else {
-    targetPrice = Number(arg0 || 0);
+    if (!isFiniteNumber(arg0) || Number(arg0) <= 0) {
+      throw new RangeError('Invalid targetPrice: must be a positive finite number');
+    }
+    targetPrice = Number(arg0);
+    if (arg1 !== undefined && (!isFiniteNumber(arg1) || Number(arg1) <= 0)) {
+      throw new RangeError('Invalid spot S: must be a positive finite number');
+    }
     S = Number(arg1 || 94500);
     K = Number(arg2 || S);
     T = Number(arg3 || (30 / DAYS_PER_YEAR));

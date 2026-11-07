@@ -14,7 +14,7 @@
  *   - `scanArbitrage(tickers)`
  */
 
-const { INITIAL_INSTRUMENTS, roundToTick } = require('../db/database');
+const { INITIAL_INSTRUMENTS } = require('../db/database');
 
 const INSTITUTIONAL_VENUES = [
   {
@@ -105,8 +105,8 @@ function getInstrumentSpec(symbol) {
 
 class SmartOrderRouter {
   /**
-   * @param {object} [matchingEngine]
-   * @param {object} [marketSim]
+   * @param {Record<string, any> | null} [matchingEngine]
+   * @param {Record<string, any> | null} [marketSim]
    */
   constructor(matchingEngine = null, marketSim = null) {
     this.matchingEngine = matchingEngine;
@@ -157,10 +157,10 @@ class SmartOrderRouter {
    * Each level carries raw quote price, takerFeeBps, latencySlippageBps, Kyle's lambda impact bps,
    * and effective net price.
    *
-   * @param {object} params
-   * @returns {object}
+   * @param {Record<string, any>} [params={}]
+   * @returns {Record<string, any>}
    */
-  buildMultiVenueLadder({ symbol = 'BTC-USD', side = 'BUY', totalSize = 1.0, urgency = 'NORMAL', midPrice = null }) {
+  buildMultiVenueLadder({ symbol = 'BTC-USD', side = 'BUY', totalSize = 1.0, urgency = 'NORMAL', midPrice = null } = {}) {
     const spec = getInstrumentSpec(symbol);
     const refMid = Number(midPrice) > 0 ? Number(midPrice) : this._resolveMidPrice(spec.symbol);
     const normSide = String(side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
@@ -259,17 +259,17 @@ class SmartOrderRouter {
    * Sweep the combined multi-venue L2 liquidity ladder across all 4 venues sorted by
    * effective net price after taker fee, latency slippage, and Kyle's lambda market impact.
    *
-   * @param {object} params
-   * @param {string} params.symbol
-   * @param {string} params.side - 'BUY' | 'SELL'
-   * @param {number} params.totalSize
-   * @param {string} [params.urgency='NORMAL']
-   * @returns {object}
+   * @param {Record<string, any>} [params={}]
+   * @returns {Record<string, any>}
    */
   routeOrder(params = {}) {
+    const rawSizeArg = params.totalSize ?? params.size ?? params.orderQty ?? params.qty;
+    if (rawSizeArg !== undefined && (typeof rawSizeArg === 'boolean' || !Number.isFinite(Number(rawSizeArg)) || Number(rawSizeArg) <= 0)) {
+      throw new RangeError('Invalid SOR totalSize: must be a positive finite number');
+    }
     const symbol = String(params.symbol || 'BTC-USD').toUpperCase();
     const side = String(params.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
-    const rawSize = Number(params.totalSize ?? params.size ?? params.orderQty ?? params.qty ?? 1.0);
+    const rawSize = Number(rawSizeArg ?? 1.0);
     const totalSize = Number.isFinite(rawSize) && rawSize > 0 ? rawSize : 1.0;
     const urgency = String(params.urgency || 'NORMAL').toUpperCase();
 
@@ -410,8 +410,8 @@ class SmartOrderRouter {
    *   2. Triangular FX/Crypto Synthetic Arbitrage (`BTC-USD` / `ETH-USD` / `ETH-BTC`)
    *   3. Statistical Basis Arbitrage (`CME-GLOBEX` Futures vs Spot Venues)
    *
-   * @param {Array|object} [tickers]
-   * @returns {{ timestamp: number, opportunities: Array<object> }}
+   * @param {Array<any>|Record<string, any>|null} [tickers]
+   * @returns {Record<string, any>}
    */
   scanArbitrage(tickers = null) {
     const now = Date.now();

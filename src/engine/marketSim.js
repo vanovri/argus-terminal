@@ -458,7 +458,7 @@ class MarketSimulator extends EventEmitter {
     }
   }
 
-  _recordTradeMetrics(state, price, size) {
+  _recordTradeMetrics(state, price, size, _timestamp = null) {
     state.lastPrice = price;
     if (price > state.high24h) state.high24h = price;
     if (price < state.low24h) state.low24h = price;

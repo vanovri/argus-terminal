@@ -10,7 +10,8 @@
   },
   "scripts": {
     "start": "node src/server/index.js",
-    "test": "node tests/e2e.test.js && node tests/security_pentest_poc.js && node tests/devtools_audit.test.js && node tests/wave2_quant.test.js && node tests/wave3_derivatives_fix.test.js && node tests/wave4_macro_replay_darkpool.test.js",
+    "test": "node tests/e2e.test.js && node tests/security_pentest_poc.js && node tests/devtools_audit.test.js && node tests/wave2_quant.test.js && node tests/wave3_derivatives_fix.test.js && node tests/wave4_macro_replay_darkpool.test.js && node --test tests/unit_engines_and_server.test.js",
+    "test:unit": "node --test tests/unit_engines_and_server.test.js",
     "test:e2e": "node tests/e2e.test.js",
     "test:wave2": "node tests/wave2_quant.test.js",
     "test:wave3": "node tests/wave3_derivatives_fix.test.js",

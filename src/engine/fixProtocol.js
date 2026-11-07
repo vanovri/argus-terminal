@@ -21,10 +21,11 @@
  *      - `decodeSbeOrder(buffer)` -> structured order object (round-trips values representable at 1e-8)
  */
 
+const { isFiniteNumber } = require('./validation');
+
 const SOH = '\x01';
 const PIPE = '|';
 const SBE_FRAME_BYTES = 40;
-const SBE_MANTISSA_SCALE = 100000000n; // 1e8 fixed-point scaling
 const SBE_MANTISSA_NUMBER = 1e8;
 
 const SYMBOL_TO_ID = {
@@ -212,7 +213,7 @@ function normalizeOrdTypeToFix(ordType) {
  * Convert named or numeric fields object into an ordered array of [tagNumberString, valueString]
  * excluding header/trailer structural tags (8, 9, 35, 49, 56, 34, 52, 10).
  *
- * @param {object|Array} fields
+ * @param {Record<string, any>|Array<any>} fields
  * @returns {Array<[string, string]>}
  */
 function normalizeBodyFields(fields) {
@@ -346,7 +347,7 @@ function normalizeBodyFields(fields) {
  *   Offset 24..31 (8B) : i64 priceMantissa  (price * 1e8 fixed-point)
  *   Offset 32..39 (8B) : i64 sizeMantissa   (size * 1e8 fixed-point)
  *
- * @param {object} params
+ * @param {Record<string, any>} [params={}]
  * @returns {Buffer} 40-byte Buffer (also Uint8Array instance)
  */
 function encodeSbeOrder(params = {}) {
@@ -428,6 +429,13 @@ function encodeSbeOrder(params = {}) {
   }
 
   // Fixed-point mantissas (i64 scaled by 1e8)
+  if (params.price !== undefined && (typeof params.price === 'boolean' || !isFiniteNumber(params.price) || Number(params.price) < 0)) {
+    throw new RangeError('Invalid SBE price: must be a non-negative finite number');
+  }
+  const rawSizeParam = size !== undefined ? size : orderQty;
+  if (rawSizeParam !== undefined && (typeof rawSizeParam === 'boolean' || !isFiniteNumber(rawSizeParam) || Number(rawSizeParam) < 0)) {
+    throw new RangeError('Invalid SBE size: must be a non-negative finite number');
+  }
   const numericPrice = Number(price) || 0;
   const numericSize = Number(size !== undefined ? size : (orderQty !== undefined ? orderQty : 0)) || 0;
   const priceMantissa = BigInt(Math.round(numericPrice * SBE_MANTISSA_NUMBER));
@@ -458,7 +466,7 @@ function encodeSbeOrder(params = {}) {
  * Decode a 40-byte CME SBE binary buffer back into a structured order object with zero precision loss.
  *
  * @param {Buffer|Uint8Array|ArrayBuffer|string} buffer
- * @returns {object}
+ * @returns {Record<string, any>}
  */
 function decodeSbeOrder(buffer) {
   let uint8;
@@ -529,8 +537,8 @@ function decodeSbeOrder(buffer) {
 
 class FixProtocolEngine {
   /**
-   * @param {object} [matchingEngine]
-   * @param {object} [options]
+   * @param {Record<string, any> | null} [matchingEngine]
+   * @param {Record<string, any>} [options]
    */
   constructor(matchingEngine = null, options = {}) {
     this.matchingEngine = matchingEngine;
@@ -628,9 +636,9 @@ class FixProtocolEngine {
    * Build a compliant FIX 4.4 wire message:
    *   8=FIX.4.4|9=...|35=...|49=...|56=...|34=...|52=...|...10=...|
    *
-   * @param {string} msgType - e.g. 'D' (NewOrderSingle), '8' (ExecutionReport), 'F' (OrderCancelRequest)
-   * @param {object|Array} [fields={}] - Tag-value map or semantic order fields
-   * @param {object} [options={}]
+   * @param {string} [msgType='D'] - e.g. 'D' (NewOrderSingle), '8' (ExecutionReport), 'F' (OrderCancelRequest)
+   * @param {Record<string, any>|Array<any>} [fields={}] - Tag-value map or semantic order fields
+   * @param {Record<string, any>} [options={}]
    * @returns {string}
    */
   buildFixMessage(
@@ -646,10 +654,11 @@ class FixProtocolEngine {
   ) {
     const delim = delimiter === SOH ? SOH : PIPE;
     const resolvedMsgType = normalizeMsgType(msgType);
-    const resolvedSender = (fields && (fields['49'] || fields.SenderCompID || fields.senderCompId)) || senderCompId || 'BUYSIDE-ALPH';
-    const resolvedTarget = (fields && (fields['56'] || fields.TargetCompID || fields.targetCompId)) || targetCompId || 'ARGUS-DMA';
-    const resolvedSeq = (fields && (fields['34'] || fields.MsgSeqNum || fields.msgSeqNum)) || msgSeqNum || 1;
-    const resolvedSendingTime = (fields && (fields['52'] || fields.SendingTime || fields.sendingTime)) || sendingTime || formatFixUtcTimestamp();
+    const fieldObj = fields && !Array.isArray(fields) ? fields : {};
+    const resolvedSender = fieldObj['49'] || fieldObj.SenderCompID || fieldObj.senderCompId || senderCompId || 'BUYSIDE-ALPH';
+    const resolvedTarget = fieldObj['56'] || fieldObj.TargetCompID || fieldObj.targetCompId || targetCompId || 'ARGUS-DMA';
+    const resolvedSeq = fieldObj['34'] || fieldObj.MsgSeqNum || fieldObj.msgSeqNum || msgSeqNum || 1;
+    const resolvedSendingTime = fieldObj['52'] || fieldObj.SendingTime || fieldObj.sendingTime || sendingTime || formatFixUtcTimestamp();
 
     const bodyPairs = [
       ['35', resolvedMsgType],
@@ -673,7 +682,7 @@ class FixProtocolEngine {
    * map standard tags, and return structured diagnostics + normalizedOrder.
    *
    * @param {string} rawFixStr
-   * @returns {object}
+   * @returns {Record<string, any>}
    */
   parseFixMessage(rawFixStr) {
     const raw = String(rawFixStr || '').trim();
@@ -713,16 +722,24 @@ class FixProtocolEngine {
       validChecksum = false;
     }
 
-    // Extract all tag=value pairs
+    // Extract all tag=value pairs and detect malformed tokens
+    const hasTrailingDelimiter = raw.endsWith(delimiter);
     const tokens = raw.split(/[\x01|]+/).filter(Boolean);
     const fields = {};
     const tagList = [];
+    const malformedTokens = [];
 
     for (const token of tokens) {
       const eqIdx = token.indexOf('=');
-      if (eqIdx <= 0) continue;
+      if (eqIdx <= 0) {
+        malformedTokens.push(token);
+        continue;
+      }
       const tag = token.slice(0, eqIdx).trim();
       const val = token.slice(eqIdx + 1).trim();
+      if (!/^\d+$/.test(tag) || val === '') {
+        malformedTokens.push(token);
+      }
       fields[tag] = val;
       if (FIX_TAG_NAMES[tag]) {
         fields[FIX_TAG_NAMES[tag]] = val;
@@ -807,11 +824,22 @@ class FixProtocolEngine {
       text: fields['58'] || null
     };
 
+    const validStructure = Boolean(
+      fields['8'] &&
+      fields['35'] &&
+      fields['10'] &&
+      malformedTokens.length === 0 &&
+      hasTrailingDelimiter
+    );
+
     return {
       validChecksum,
       expectedChecksum,
       providedChecksum,
       validBodyLength,
+      validStructure,
+      hasTrailingDelimiter,
+      malformedTokens,
       bodyLength: fields['9'] ? Number(fields['9']) : computedBodyLength,
       computedBodyLength,
       delimiter: delimiter === SOH ? 'SOH' : 'PIPE',
@@ -829,9 +857,9 @@ class FixProtocolEngine {
    * `35=8` (ExecutionReport) FIX 4.4 wire string + recent FIX session log.
    *
    * @param {string} rawFixStr
-   * @param {object} [matchingEngine]
+   * @param {Record<string, any> | null} [matchingEngine]
    * @param {string} [accountId='ACC-INST-01']
-   * @returns {object}
+   * @returns {Record<string, any>}
    */
   executeFixOrder(rawFixStr, matchingEngine = null, accountId = 'ACC-INST-01') {
     const engine = matchingEngine || this.matchingEngine;
@@ -945,19 +973,8 @@ class FixProtocolEngine {
     let executionResult;
     let rejectReason = null;
 
-    try {
-      executionResult = engine.submitOrder({
-        id: clOrdId,
-        accountId: resolvedAccountId,
-        symbol,
-        side,
-        type,
-        price,
-        size,
-        clientTag: `FIX-4.4-${inSender}`
-      });
-    } catch (err) {
-      rejectReason = err.message || 'FIX_DMA_REJECTED';
+    if (!parsed.validChecksum) {
+      rejectReason = 'INVALID_FIX_CHECKSUM';
       executionResult = {
         order: {
           id: clOrdId,
@@ -973,6 +990,36 @@ class FixProtocolEngine {
         },
         fills: []
       };
+    } else {
+      try {
+        executionResult = engine.submitOrder({
+          id: clOrdId,
+          accountId: resolvedAccountId,
+          symbol,
+          side,
+          type,
+          price,
+          size,
+          clientTag: `FIX-4.4-${inSender}`
+        });
+      } catch (err) {
+        rejectReason = err.message || 'FIX_DMA_REJECTED';
+        executionResult = {
+          order: {
+            id: clOrdId,
+            accountId: resolvedAccountId,
+            symbol,
+            side,
+            type,
+            price: price || 0,
+            size,
+            filledSize: 0,
+            remainingSize: 0,
+            status: 'REJECTED'
+          },
+          fills: []
+        };
+      }
     }
 
     const { order, fills = [] } = executionResult;
@@ -1121,5 +1168,7 @@ module.exports = {
   ID_TO_SYMBOL,
   FIX_TAG_NAMES,
   FIX_MSG_TYPE_NAMES,
-  SBE_FRAME_BYTES
+  SBE_FRAME_BYTES,
+  SOH,
+  PIPE
 };

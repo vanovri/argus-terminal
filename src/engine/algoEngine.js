@@ -25,8 +25,8 @@ const VALID_ALGO_STRATEGIES = new Set([
  *   r(s, q, t) = s - q * gamma * sigma^2 * (T - t)
  *   delta(t)   = (1 / gamma) * ln(1 + gamma / kappa) + 0.5 * gamma * sigma^2 * (T - t)
  *
- * @param {object} params
- * @returns {object}
+ * @param {Record<string, any>} [params={}]
+ * @returns {Record<string, any>}
  */
 function computeAvellanedaStoikovQuotes({
   midPrice,
@@ -36,7 +36,7 @@ function computeAvellanedaStoikovQuotes({
   kappa = 1.5,
   timeRemaining = 1.0,
   tickSize = 0.50
-}) {
+} = {}) {
   const s = Number(midPrice) || 100;
   const q = Number(inventoryQty) || 0;
   const g = Math.max(0.0001, Number(gamma) || 0.1);
@@ -72,9 +72,9 @@ function computeAvellanedaStoikovQuotes({
 
 class AlgoExecutionEngine extends EventEmitter {
   /**
-   * @param {object} [matchingEngine]
-   * @param {object} [dbInstance]
-   * @param {object} [options]
+   * @param {Record<string, any> | null} [matchingEngine]
+   * @param {Record<string, any> | null} [dbInstance]
+   * @param {Record<string, any>} [options]
    */
   constructor(matchingEngine = null, dbInstance = null, options = {}) {
     super();
@@ -223,9 +223,16 @@ class AlgoExecutionEngine extends EventEmitter {
    * Register an institutional parent algorithmic order, immediately execute the first child
    * slice against MatchingEngine, and schedule remaining slices.
    *
-   * @param {object} params
+   * @param {Record<string, any>} [params={}]
    */
   startAlgo(params = {}) {
+    const rawSizeArg = params.totalSize ?? params.size;
+    if (typeof rawSizeArg === 'boolean') {
+      throw new Error('Invalid algo totalSize: must be a positive number');
+    }
+    if (params.slices !== undefined && (typeof params.slices === 'boolean' || !Number.isFinite(Number(params.slices)) || Number(params.slices) <= 0)) {
+      throw new RangeError('Invalid algo slices: must be a positive integer');
+    }
     const accountId = params.accountId || 'ACC-INST-01';
     const symbol = params.symbol || 'BTC-USD';
     let rawStrategy = String(params.strategy || 'TWAP').toUpperCase().trim();
@@ -234,7 +241,7 @@ class AlgoExecutionEngine extends EventEmitter {
     }
     const strategy = VALID_ALGO_STRATEGIES.has(rawStrategy) ? rawStrategy : 'TWAP';
     const side = String(params.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
-    const totalSize = Number(params.totalSize ?? params.size ?? 1.0);
+    const totalSize = Number(rawSizeArg ?? 1.0);
     if (!Number.isFinite(totalSize) || totalSize <= 0) {
       throw new Error('Invalid algo totalSize: must be a positive number');
     }
@@ -362,7 +369,7 @@ class AlgoExecutionEngine extends EventEmitter {
 
   /**
    * Execute the next scheduled child slice of an active parent algo order.
-   * @param {object} algo
+   * @param {Record<string, any>} algo
    */
   _executeNextSlice(algo) {
     if (algo.status !== 'ACTIVE' || algo.remainingSize <= 1e-9) {
@@ -605,7 +612,7 @@ class AlgoExecutionEngine extends EventEmitter {
    *  - `MEAN_REVERSION_BOLLINGER` (Bollinger Band Z-score mean reversion)
    *  - `AVELLANEDA_MM` (Avellaneda-Stoikov inventory-aware high-frequency market making)
    *
-   * @param {object} options
+   * @param {Record<string, any>} [options={}]
    */
   runBacktest(options = {}) {
     const symbol = options.symbol || 'BTC-USD';

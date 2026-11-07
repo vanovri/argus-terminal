@@ -18,6 +18,8 @@
  *      - Parallel & Non-Parallel Rate Shock Taylor Expansion vs Exact Repricing Proof
  */
 
+const { isFiniteNumber } = require('./validation');
+
 const STANDARD_TENORS = [
   { label: '1M', years: 1 / 12 },
   { label: '3M', years: 0.25 },
@@ -221,6 +223,9 @@ function computeNssLoadings(tau, lambda1 = 1.65, lambda2 = 6.50) {
  * and continuous discount factor D(tau) at maturity tau (in years).
  */
 function evaluateNelsonSiegelSvensson(tau, params = {}) {
+  if (tau !== undefined && (typeof tau === 'boolean' || !isFiniteNumber(tau) || Number(tau) < 0)) {
+    throw new RangeError('Invalid maturity tau: must be a non-negative finite number');
+  }
   const preset = NSS_REGIME_PRESETS[params.regime] || NSS_REGIME_PRESETS.NORMAL_STEEP;
   const beta0 = params.beta0 !== undefined ? Number(params.beta0) : preset.beta0;
   const beta1 = params.beta1 !== undefined ? Number(params.beta1) : preset.beta1;
@@ -388,9 +393,23 @@ function solveLinearSystem4x4(A, b) {
  * and regularized OLS normal equations (X^T X + alpha*I) beta = X^T y.
  */
 function calibrateNelsonSiegelSvensson(observations = [], options = {}) {
-  const obs = (Array.isArray(observations) ? observations : []).map((o) => {
-    const tau = Number(o.tau ?? o.years ?? o.maturityYears ?? 1.0);
-    const rawY = Number(o.yield ?? o.spotYield ?? o.rate ?? 0.045);
+  if (!Array.isArray(observations)) {
+    throw new TypeError('Invalid observations: expected an array of { tau, yield } objects');
+  }
+  const obs = observations.map((o, idx) => {
+    if (!o || typeof o !== 'object') {
+      throw new TypeError(`Invalid observation at index ${idx}: expected object`);
+    }
+    const rawTau = o.tau ?? o.years ?? o.maturityYears;
+    const rawYield = o.yield ?? o.spotYield ?? o.rate;
+    if (rawTau !== undefined && (!isFiniteNumber(rawTau) || Number(rawTau) <= 0)) {
+      throw new RangeError(`Invalid observation tenor tau at index ${idx}: must be a positive finite number`);
+    }
+    if (rawYield !== undefined && !isFiniteNumber(rawYield)) {
+      throw new RangeError(`Invalid observation yield at index ${idx}: must be a finite number`);
+    }
+    const tau = Number(rawTau ?? 1.0);
+    const rawY = Number(rawYield ?? 0.045);
     const y = rawY > 0.5 ? rawY / 100 : rawY; // Normalize percentage inputs (e.g., 4.35 -> 0.0435)
     return { tau: Math.max(0.01, tau), yield: y };
   });
@@ -399,7 +418,7 @@ function calibrateNelsonSiegelSvensson(observations = [], options = {}) {
     throw new Error('At least 3 yield observations are required to calibrate Nelson-Siegel-Svensson');
   }
 
-  const ridgeAlpha = Number(options.ridgeAlpha ?? 1e-8);
+  const ridgeAlpha = Math.max(1e-10, Number(options.ridgeAlpha ?? 1e-8));
   const lambda1Candidates = options.lambda1 ? [Number(options.lambda1)] : [1.1, 1.4, 1.65, 2.0, 2.5];
   const lambda2Candidates = options.lambda2 ? [Number(options.lambda2)] : [4.5, 5.5, 6.5, 8.0];
 
@@ -428,12 +447,13 @@ function calibrateNelsonSiegelSvensson(observations = [], options = {}) {
         }
       }
 
-      for (let i = 1; i < 4; i++) {
+      // Tikhonov regularization across all 4 diagonal entries to handle singular/duplicate tenors safely
+      for (let i = 0; i < 4; i++) {
         XtX[i][i] += ridgeAlpha;
       }
 
       const betas = solveLinearSystem4x4(XtX, Xty);
-      const [beta0, beta1, beta2, beta3] = betas;
+      const [beta0, beta1, beta2, beta3] = betas.map((v) => (Number.isFinite(v) ? v : 0));
 
       let sse = 0;
       const fittedPoints = obs.map((pt) => {
@@ -525,11 +545,21 @@ function buildBondCashFlows({
  *   - Convexity (years^2)
  */
 function priceBond(params = {}) {
+  if (params.faceValue !== undefined && (!isFiniteNumber(params.faceValue) || Number(params.faceValue) <= 0)) {
+    throw new RangeError('Invalid bond faceValue: must be a positive finite number');
+  }
+  const rawMat = params.maturityYears ?? params.tau;
+  if (rawMat !== undefined && (!isFiniteNumber(rawMat) || Number(rawMat) <= 0)) {
+    throw new RangeError('Invalid bond maturityYears: must be a positive finite number');
+  }
+  if (params.couponRate !== undefined && (!isFiniteNumber(params.couponRate) || Number(params.couponRate) < 0)) {
+    throw new RangeError('Invalid bond couponRate: must be a non-negative finite number');
+  }
   const faceValue = Number(params.faceValue ?? 100);
   const notionalUsd = Number(params.notionalUsd ?? 1000000);
   const couponRate = Number(params.couponRate ?? 0.0435);
   const frequency = Math.max(1, Math.round(Number(params.frequency ?? 2)));
-  const maturityYears = Math.max(0.05, Number(params.maturityYears ?? params.tau ?? 10.0));
+  const maturityYears = Math.max(0.05, Number(rawMat ?? 10.0));
   const accruedFraction = Math.min(0.999, Math.max(0, Number(params.accruedFraction ?? 0.0)));
 
   let ytm = params.ytm ?? params.yieldToMaturity ?? params.yield;

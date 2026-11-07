@@ -9,6 +9,8 @@
  *        is assigned a strictly monotonic sequence number `seq` and nanosecond/millisecond timestamp.
  *      - Periodic keyframe snapshots every K events enable O(K) sub-millisecond random access seeking
  *        to any historical sequence number or timestamp without replaying from genesis.
+ *      - Bounded ring-buffer retention (`maxEvents`) evicts oldest events while anchoring a deterministic
+ *        keyframe at the new window head so long-running sessions never leak memory and replay remains 100% exact.
  *   2. Cryptographic State Hash Verification (`computeBookStateHash`):
  *      - Computes deterministic SHA-256 state digest over canonicalized (price, size) bid/ask ladders,
  *        proving bit-for-bit replay determinism between live execution and time-travel reconstruction.
@@ -19,6 +21,7 @@
 
 const crypto = require('node:crypto');
 const { INITIAL_INSTRUMENTS, roundToTick } = require('../db/database');
+const { isFiniteNumber } = require('./validation');
 
 function createPrng(seed) {
   let state = seed >>> 0;
@@ -33,6 +36,8 @@ const MAX_EVENTS_PER_SYMBOL = 600;
 
 /**
  * Deep-clones an L2 orderbook ladder array [{ price, size, total, ordersCount }]
+ * @param {Array<Record<string, any>>} [levels=[]]
+ * @param {number} [maxDepth=18]
  */
 function cloneLadder(levels = [], maxDepth = 18) {
   let runningTotal = 0;
@@ -52,6 +57,8 @@ function cloneLadder(levels = [], maxDepth = 18) {
 
 /**
  * Computes deterministic SHA-256 digest of an L2 orderbook state.
+ * @param {Record<string, any>} bookState
+ * @returns {string}
  */
 function computeBookStateHash(bookState) {
   const bids = Array.isArray(bookState?.bids) ? bookState.bids : [];
@@ -70,6 +77,10 @@ function computeBookStateHash(bookState) {
 
 /**
  * Computes institutional microstructure metrics for a reconstructed L2 state.
+ * @param {string} symbol
+ * @param {Array<{ price: number, size: number }>} bids
+ * @param {Array<{ price: number, size: number }>} asks
+ * @param {number} [tickSize=0.5]
  */
 function computeFrameMicrostructure(symbol, bids, asks, tickSize = 0.5) {
   const bestBid = bids.length > 0 ? Number(bids[0].price) : 0;
@@ -119,6 +130,9 @@ function computeFrameMicrostructure(symbol, bids, asks, tickSize = 0.5) {
 
 /**
  * Applies a single deterministic L2 delta event onto a mutable { bids, asks } state.
+ * @param {Record<string, any>} state
+ * @param {Record<string, any>} delta
+ * @param {number} [tickSize=0.5]
  */
 function applyDeltaToBookState(state, delta, tickSize = 0.5) {
   const bidsMap = new Map();
@@ -135,7 +149,7 @@ function applyDeltaToBookState(state, delta, tickSize = 0.5) {
   const eventType = String(delta.eventType || 'ADD_LIMIT').toUpperCase();
   const priceKey = Number(roundToTick(Number(delta.price || state.midPrice || 94500), tickSize).toFixed(4));
   const size = Math.max(0.0001, Number(delta.size || 0.5));
-  let fills = [];
+  const fills = [];
 
   if (eventType === 'ADD_LIMIT' || eventType === 'ICEBERG_REFILL') {
     const targetMap = side === 'BUY' ? bidsMap : asksMap;
@@ -223,13 +237,61 @@ function applyDeltaToBookState(state, delta, tickSize = 0.5) {
   };
 }
 
+/**
+ * Builds a canonical keyframe checkpoint object from a book state.
+ * @param {number} seq
+ * @param {number} timestamp
+ * @param {string} symbol
+ * @param {Record<string, any>} state
+ * @param {string} stateHash
+ */
+function buildKeyframeSnapshot(seq, timestamp, symbol, state, stateHash) {
+  return {
+    seq,
+    timestamp,
+    symbol,
+    bids: cloneLadder(state.bids, 15),
+    asks: cloneLadder(state.asks, 15),
+    midPrice: state.midPrice,
+    microPrice: state.microPrice,
+    bestBid: state.bestBid,
+    bestAsk: state.bestAsk,
+    spread: state.spread,
+    spreadBps: state.spreadBps,
+    obi: state.obi,
+    totalBidDepth: state.totalBidDepth,
+    totalAskDepth: state.totalAskDepth,
+    stateHash
+  };
+}
+
 class LobTimeMachine {
+  /**
+   * @param {Record<string, any> | null} [matchingEngine=null]
+   * @param {{ keyframeInterval?: number, maxEvents?: number }} [options={}]
+   */
   constructor(matchingEngine = null, options = {}) {
     this.engine = matchingEngine;
-    this.keyframeInterval = Number(options.keyframeInterval) || KEYFRAME_INTERVAL;
-    this.maxEvents = Number(options.maxEvents) || MAX_EVENTS_PER_SYMBOL;
 
-    // Map<symbol, { events: Array, keyframes: Map<seq, Snapshot>, tickSize, lotSize, basePrice }>
+    if (options.keyframeInterval !== undefined) {
+      if (typeof options.keyframeInterval === 'boolean' || !isFiniteNumber(options.keyframeInterval) || Number(options.keyframeInterval) < 1) {
+        throw new RangeError('Invalid keyframeInterval: must be a positive integer');
+      }
+      this.keyframeInterval = Math.floor(Number(options.keyframeInterval));
+    } else {
+      this.keyframeInterval = KEYFRAME_INTERVAL;
+    }
+
+    if (options.maxEvents !== undefined) {
+      if (typeof options.maxEvents === 'boolean' || !isFiniteNumber(options.maxEvents) || Number(options.maxEvents) < 2) {
+        throw new RangeError('Invalid maxEvents: must be a finite integer >= 2');
+      }
+      this.maxEvents = Math.floor(Number(options.maxEvents));
+    } else {
+      this.maxEvents = MAX_EVENTS_PER_SYMBOL;
+    }
+
+    /** @type {Map<string, Record<string, any>>} */
     this.journals = new Map();
 
     this._seedAllJournals();
@@ -243,6 +305,11 @@ class LobTimeMachine {
     }
   }
 
+  /**
+   * @param {import('../db/database').InstrumentRecord} inst
+   * @param {number} nowTs
+   * @param {number} seed
+   */
   _seedSymbolJournal(inst, nowTs, seed) {
     const rand = createPrng(seed);
     const symbol = inst.symbol;
@@ -333,27 +400,11 @@ class LobTimeMachine {
       events.push(eventEntry);
 
       if (seq === 1 || seq % this.keyframeInterval === 0 || seq === totalSeedEvents) {
-        keyframes.set(seq, {
-          seq,
-          timestamp: ts,
-          symbol,
-          bids: cloneLadder(currentState.bids, 15),
-          asks: cloneLadder(currentState.asks, 15),
-          midPrice: currentState.midPrice,
-          microPrice: currentState.microPrice,
-          bestBid: currentState.bestBid,
-          bestAsk: currentState.bestAsk,
-          spread: currentState.spread,
-          spreadBps: currentState.spreadBps,
-          obi: currentState.obi,
-          totalBidDepth: currentState.totalBidDepth,
-          totalAskDepth: currentState.totalAskDepth,
-          stateHash
-        });
+        keyframes.set(seq, buildKeyframeSnapshot(seq, ts, symbol, currentState, stateHash));
       }
     }
 
-    this.journals.set(symbol, {
+    const journal = {
       symbol,
       tickSize,
       lotSize,
@@ -361,7 +412,13 @@ class LobTimeMachine {
       events,
       keyframes,
       latestState: currentState
-    });
+    };
+
+    if (journal.events.length > this.maxEvents) {
+      this._pruneJournalToMaxEvents(journal);
+    }
+
+    this.journals.set(symbol, journal);
   }
 
   _getJournal(symbol = 'BTC-USD') {
@@ -374,148 +431,14 @@ class LobTimeMachine {
   }
 
   /**
-   * Appends a new orderbook event (from live execution or manual injection) into the Time-Machine journal.
+   * Reconstructs the working state at `clampedSeq` using the nearest preceding keyframe.
+   * @param {Record<string, any>} journal
+   * @param {number} clampedSeq
    */
-  recordEvent(params = {}) {
-    const symbol = String(params.symbol || 'BTC-USD').toUpperCase();
-    const journal = this._getJournal(symbol);
-    const nextSeq = journal.events.length > 0 ? journal.events[journal.events.length - 1].seq + 1 : 1;
-    const timestamp = Number(params.timestamp) || Date.now();
-
-    const delta = {
-      seq: nextSeq,
-      timestamp,
-      symbol,
-      eventType: String(params.eventType || params.type || 'ADD_LIMIT').toUpperCase(),
-      side: String(params.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
-      price: Number(params.price || journal.latestState.midPrice || journal.basePrice),
-      size: Math.max(0.0001, Number(params.size || 0.25)),
-      actor: String(params.actor || params.clientTag || 'LIVE-ENGINE')
-    };
-
-    // If caller provides an explicit live engine snapshot, anchor to it; otherwise evolve deterministically
-    let nextState;
-    if (params.snapshot && Array.isArray(params.snapshot.bids) && Array.isArray(params.snapshot.asks)) {
-      const bids = cloneLadder(params.snapshot.bids, 15);
-      const asks = cloneLadder(params.snapshot.asks, 15);
-      const metrics = computeFrameMicrostructure(symbol, bids, asks, journal.tickSize);
-      nextState = {
-        symbol,
-        bids,
-        asks,
-        ...metrics,
-        fills: params.fills || []
-      };
-      // Force a keyframe whenever an explicit snapshot is anchored so replay matches 100%
-      const stateHash = computeBookStateHash(nextState);
-      journal.keyframes.set(nextSeq, {
-        seq: nextSeq,
-        timestamp,
-        symbol,
-        bids: cloneLadder(nextState.bids, 15),
-        asks: cloneLadder(nextState.asks, 15),
-        midPrice: nextState.midPrice,
-        microPrice: nextState.microPrice,
-        bestBid: nextState.bestBid,
-        bestAsk: nextState.bestAsk,
-        spread: nextState.spread,
-        spreadBps: nextState.spreadBps,
-        obi: nextState.obi,
-        totalBidDepth: nextState.totalBidDepth,
-        totalAskDepth: nextState.totalAskDepth,
-        stateHash
-      });
-    } else {
-      nextState = applyDeltaToBookState(journal.latestState, delta, journal.tickSize);
-    }
-
-    const stateHash = computeBookStateHash(nextState);
-    const eventEntry = {
-      ...delta,
-      midPrice: nextState.midPrice,
-      microPrice: nextState.microPrice,
-      spread: nextState.spread,
-      spreadBps: nextState.spreadBps,
-      obi: nextState.obi,
-      fillsCount: nextState.fills ? nextState.fills.length : 0,
-      stateHash
-    };
-
-    journal.events.push(eventEntry);
-    journal.latestState = nextState;
-
-    if (nextSeq % this.keyframeInterval === 0) {
-      journal.keyframes.set(nextSeq, {
-        seq: nextSeq,
-        timestamp,
-        symbol,
-        bids: cloneLadder(nextState.bids, 15),
-        asks: cloneLadder(nextState.asks, 15),
-        midPrice: nextState.midPrice,
-        microPrice: nextState.microPrice,
-        bestBid: nextState.bestBid,
-        bestAsk: nextState.bestAsk,
-        spread: nextState.spread,
-        spreadBps: nextState.spreadBps,
-        obi: nextState.obi,
-        totalBidDepth: nextState.totalBidDepth,
-        totalAskDepth: nextState.totalAskDepth,
-        stateHash
-      });
-    }
-
-    return {
-      event: eventEntry,
-      state: this.seekToSequence(symbol, nextSeq)
-    };
-  }
-
-  /**
-   * Returns timeline metadata, sequence bounds, keyframes list, and recent event tape for the UI scrubber.
-   */
-  getTimeline(symbol = 'BTC-USD', limit = 100) {
-    const journal = this._getJournal(symbol);
+  _reconstructWorkingState(journal, clampedSeq) {
     const events = journal.events;
-    const minSeq = events.length > 0 ? events[0].seq : 1;
-    const maxSeq = events.length > 0 ? events[events.length - 1].seq : 1;
-    const startTs = events.length > 0 ? events[0].timestamp : Date.now();
-    const endTs = events.length > 0 ? events[events.length - 1].timestamp : Date.now();
-
-    const keyframes = Array.from(journal.keyframes.keys()).sort((a, b) => a - b);
-    const slicedEvents = events.slice(-Math.min(events.length, Math.max(10, Number(limit) || 100)));
-
-    return {
-      symbol: journal.symbol,
-      totalEvents: events.length,
-      minSeq,
-      maxSeq,
-      startTimestamp: startTs,
-      endTimestamp: endTs,
-      keyframeInterval: this.keyframeInterval,
-      keyframes,
-      events: slicedEvents,
-      latestStateHash: events.length > 0 ? events[events.length - 1].stateHash : null
-    };
-  }
-
-  /**
-   * Reconstructs exact historical L2 Orderbook state at `targetSeq` by jumping to the nearest
-   * preceding keyframe and replaying delta events forward to `targetSeq`.
-   */
-  seekToSequence(symbol = 'BTC-USD', targetSeq = null) {
-    const journal = this._getJournal(symbol);
-    const events = journal.events;
-    if (events.length === 0) {
-      return null;
-    }
-
     const minSeq = events[0].seq;
-    const maxSeq = events[events.length - 1].seq;
-    const clampedSeq = targetSeq === null || targetSeq === undefined
-      ? maxSeq
-      : Math.max(minSeq, Math.min(maxSeq, Math.round(Number(targetSeq) || maxSeq)));
 
-    // Find highest keyframe <= clampedSeq
     let anchorSeq = minSeq;
     for (const kSeq of journal.keyframes.keys()) {
       if (kSeq <= clampedSeq && kSeq >= anchorSeq) {
@@ -547,6 +470,167 @@ class LobTimeMachine {
       workingState = applyDeltaToBookState(workingState, ev, journal.tickSize);
       replayedDeltas += 1;
     }
+
+    return { workingState, anchorSeq, replayedDeltas };
+  }
+
+  /**
+   * Enforces `this.maxEvents` bounded retention on `journal` by anchoring a deterministic
+   * keyframe at the new window head (`newMinSeq`) before splicing evicted events and keyframes.
+   * @param {Record<string, any>} journal
+   */
+  _pruneJournalToMaxEvents(journal) {
+    if (journal.events.length <= this.maxEvents) {
+      return;
+    }
+    const evictCount = journal.events.length - this.maxEvents;
+    const newHeadEvent = journal.events[evictCount];
+    const newMinSeq = newHeadEvent.seq;
+
+    if (!journal.keyframes.has(newMinSeq)) {
+      const { workingState } = this._reconstructWorkingState(journal, newMinSeq);
+      journal.keyframes.set(
+        newMinSeq,
+        buildKeyframeSnapshot(newMinSeq, newHeadEvent.timestamp, journal.symbol, workingState, newHeadEvent.stateHash)
+      );
+    }
+
+    journal.events.splice(0, evictCount);
+
+    for (const kSeq of Array.from(journal.keyframes.keys())) {
+      if (kSeq < newMinSeq) {
+        journal.keyframes.delete(kSeq);
+      }
+    }
+  }
+
+  /**
+   * Appends a new orderbook event (from live execution or manual injection) into the Time-Machine journal.
+   * @param {Record<string, any>} [params={}]
+   */
+  recordEvent(params = {}) {
+    if (params.size !== undefined && (typeof params.size === 'boolean' || !isFiniteNumber(params.size) || Number(params.size) <= 0)) {
+      throw new RangeError('Invalid replay event size: must be a positive finite number');
+    }
+    if (params.price !== undefined && (typeof params.price === 'boolean' || !isFiniteNumber(params.price) || Number(params.price) <= 0)) {
+      throw new RangeError('Invalid replay event price: must be a positive finite number');
+    }
+
+    const symbol = String(params.symbol || 'BTC-USD').toUpperCase();
+    const journal = this._getJournal(symbol);
+    const nextSeq = journal.events.length > 0 ? journal.events[journal.events.length - 1].seq + 1 : 1;
+    const timestamp = Number(params.timestamp) || Date.now();
+
+    const delta = {
+      seq: nextSeq,
+      timestamp,
+      symbol,
+      eventType: String(params.eventType || params.type || 'ADD_LIMIT').toUpperCase(),
+      side: String(params.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY',
+      price: Number(params.price || journal.latestState.midPrice || journal.basePrice),
+      size: Math.max(0.0001, Number(params.size || 0.25)),
+      actor: String(params.actor || params.clientTag || 'LIVE-ENGINE')
+    };
+
+    // If caller provides an explicit live engine snapshot, anchor to it; otherwise evolve deterministically
+    let nextState;
+    if (params.snapshot && Array.isArray(params.snapshot.bids) && Array.isArray(params.snapshot.asks)) {
+      const bids = cloneLadder(params.snapshot.bids, 15);
+      const asks = cloneLadder(params.snapshot.asks, 15);
+      const metrics = computeFrameMicrostructure(symbol, bids, asks, journal.tickSize);
+      nextState = {
+        symbol,
+        bids,
+        asks,
+        ...metrics,
+        fills: params.fills || []
+      };
+      const stateHash = computeBookStateHash(nextState);
+      journal.keyframes.set(nextSeq, buildKeyframeSnapshot(nextSeq, timestamp, symbol, nextState, stateHash));
+    } else {
+      nextState = applyDeltaToBookState(journal.latestState, delta, journal.tickSize);
+    }
+
+    const stateHash = computeBookStateHash(nextState);
+    const eventEntry = {
+      ...delta,
+      midPrice: nextState.midPrice,
+      microPrice: nextState.microPrice,
+      spread: nextState.spread,
+      spreadBps: nextState.spreadBps,
+      obi: nextState.obi,
+      fillsCount: nextState.fills ? nextState.fills.length : 0,
+      stateHash
+    };
+
+    journal.events.push(eventEntry);
+    journal.latestState = nextState;
+
+    if (nextSeq % this.keyframeInterval === 0) {
+      journal.keyframes.set(nextSeq, buildKeyframeSnapshot(nextSeq, timestamp, symbol, nextState, stateHash));
+    }
+
+    if (journal.events.length > this.maxEvents) {
+      this._pruneJournalToMaxEvents(journal);
+    }
+
+    return {
+      event: eventEntry,
+      state: this.seekToSequence(symbol, nextSeq)
+    };
+  }
+
+  /**
+   * Returns timeline metadata, sequence bounds, keyframes list, and recent event tape for the UI scrubber.
+   * @param {string} [symbol='BTC-USD']
+   * @param {number} [limit=100]
+   */
+  getTimeline(symbol = 'BTC-USD', limit = 100) {
+    const journal = this._getJournal(symbol);
+    const events = journal.events;
+    const minSeq = events.length > 0 ? events[0].seq : 1;
+    const maxSeq = events.length > 0 ? events[events.length - 1].seq : 1;
+    const startTs = events.length > 0 ? events[0].timestamp : Date.now();
+    const endTs = events.length > 0 ? events[events.length - 1].timestamp : Date.now();
+
+    const keyframes = Array.from(journal.keyframes.keys()).sort((a, b) => a - b);
+    const slicedEvents = events.slice(-Math.min(events.length, Math.max(1, Number(limit) || 100)));
+
+    return {
+      symbol: journal.symbol,
+      totalEvents: events.length,
+      minSeq,
+      maxSeq,
+      startTimestamp: startTs,
+      endTimestamp: endTs,
+      keyframeInterval: this.keyframeInterval,
+      maxEvents: this.maxEvents,
+      keyframes,
+      events: slicedEvents,
+      latestStateHash: events.length > 0 ? events[events.length - 1].stateHash : null
+    };
+  }
+
+  /**
+   * Reconstructs exact historical L2 Orderbook state at `targetSeq` by jumping to the nearest
+   * preceding keyframe and replaying delta events forward to `targetSeq`.
+   * @param {string} [symbol='BTC-USD']
+   * @param {number|null} [targetSeq=null]
+   */
+  seekToSequence(symbol = 'BTC-USD', targetSeq = null) {
+    const journal = this._getJournal(symbol);
+    const events = journal.events;
+    if (events.length === 0) {
+      return null;
+    }
+
+    const minSeq = events[0].seq;
+    const maxSeq = events[events.length - 1].seq;
+    const clampedSeq = targetSeq === null || targetSeq === undefined
+      ? maxSeq
+      : Math.max(minSeq, Math.min(maxSeq, Math.round(Number(targetSeq) || maxSeq)));
+
+    const { workingState, anchorSeq, replayedDeltas } = this._reconstructWorkingState(journal, clampedSeq);
 
     const targetEvent = events[clampedSeq - minSeq] || events[events.length - 1];
     const computedHash = computeBookStateHash(workingState);
@@ -591,6 +675,8 @@ class LobTimeMachine {
 
   /**
    * Reconstructs the historical L2 Orderbook state at or immediately prior to `targetTimestamp`.
+   * @param {string} [symbol='BTC-USD']
+   * @param {number} [targetTimestamp]
    */
   seekToTimestamp(symbol = 'BTC-USD', targetTimestamp) {
     const journal = this._getJournal(symbol);

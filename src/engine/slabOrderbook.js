@@ -95,7 +95,7 @@ const WASM_BYTES = new Uint8Array([
 
 const wasmModule = new WebAssembly.Module(WASM_BYTES);
 const wasmInstance = new WebAssembly.Instance(wasmModule);
-const wasmExports = wasmInstance.exports;
+const wasmExports = /** @type {any} */ (wasmInstance.exports);
 const wasmPriceCrosses = wasmExports.priceCrosses;
 const wasmMinInt = wasmExports.minInt;
 const wasmCalcNotionalCents = wasmExports.calcNotionalCents;
@@ -103,9 +103,17 @@ const wasmCalcNotionalCents = wasmExports.calcNotionalCents;
 const RESULT_POOL_SIZE = 64;
 const RESULT_POOL_MASK = RESULT_POOL_SIZE - 1;
 
+/**
+ * @typedef {Object} SlabSubmitResult
+ * @property {number} filledSize
+ * @property {number} restingId
+ * @property {number} matchCount
+ * @property {number} lastFillPrice
+ */
+
 class SlabOrderbook {
   /**
-   * @param {number|object} [optionsOrCapacity=262144]
+   * @param {number|Record<string, any>} [optionsOrCapacity=262144]
    * @param {number} [tickSize=0.50]
    * @param {number} [lotSize=0.01]
    */
@@ -233,13 +241,16 @@ class SlabOrderbook {
    */
   _normalizeSide(side) {
     if (typeof side === 'number') {
-      return side === 0 ? SIDE_BUY : SIDE_SELL;
+      if (side === 0) return SIDE_BUY;
+      if (side === 1) return SIDE_SELL;
+      throw new RangeError('Invalid slab order side: numeric side must be 0 (BUY) or 1 (SELL)');
     }
     if (typeof side === 'string' && side.length > 0) {
       const c = side.charCodeAt(0);
-      return c === 66 || c === 98 ? SIDE_BUY : SIDE_SELL;
+      if (c === 66 || c === 98) return SIDE_BUY;
+      if (c === 83 || c === 115) return SIDE_SELL;
     }
-    return SIDE_BUY;
+    throw new RangeError('Invalid slab order side: must be BUY, SELL, 0, or 1');
   }
 
   /**
@@ -371,11 +382,11 @@ class SlabOrderbook {
    * Submit a limit order to the zero-allocation slab orderbook.
    * Uses the embedded WASM kernel (`priceCrosses`, `minInt`, `calcNotionalCents`) on the hot path.
    *
-   * @param {string|number} side - 'BUY' | 'SELL' | 0 | 1
-   * @param {number} price - limit price
-   * @param {number} size - order quantity
+   * @param {string|number|Record<string, any>} side - 'BUY' | 'SELL' | 0 | 1 or order object
+   * @param {number} [price] - limit price
+   * @param {number} [size] - order quantity
    * @param {number} [id] - numeric order ID
-   * @returns {{ filledSize: number, restingId: number, matchCount: number, lastFillPrice: number }}
+   * @returns {SlabSubmitResult}
    */
   submitSlabOrder(side, price, size, id) {
     if (side !== null && typeof side === 'object') {
@@ -385,7 +396,15 @@ class SlabOrderbook {
       price = obj.price;
       side = obj.side;
     }
-    const sideCode = this._normalizeSide(side);
+
+    if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
+      throw new RangeError('Invalid slab order price: must be a positive finite number');
+    }
+    if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+      throw new RangeError('Invalid slab order size: must be a positive finite number');
+    }
+
+    const sideCode = this._normalizeSide(/** @type {string|number} */ (side));
     const orderId = id !== undefined && id !== null ? (id | 0) : this._autoIdSeq++;
     const incomingTicks = Math.round(price * this.invTickSize) | 0;
 
@@ -495,6 +514,9 @@ class SlabOrderbook {
    * @returns {boolean} true if order was active and cancelled
    */
   cancelSlabOrder(id) {
+    if (typeof id === 'boolean' || id === null || id === undefined || !Number.isFinite(Number(id))) {
+      return false;
+    }
     const orderId = id | 0;
     let slot = -1;
     if (orderId >= 0 && orderId < this.maxDirectId) {

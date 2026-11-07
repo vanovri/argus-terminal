@@ -2,16 +2,104 @@
 
 const crypto = require('node:crypto');
 const { getDb, INITIAL_INSTRUMENTS, roundToTick } = require('../db/database');
+const { isFiniteNumber, logDiagnostic } = require('./validation');
+
+/**
+ * @typedef {Object} RestingOrder
+ * @property {string} id
+ * @property {string} accountId
+ * @property {string} symbol
+ * @property {'BUY'|'SELL'} side
+ * @property {'LIMIT'|'MARKET'} type
+ * @property {number} price
+ * @property {number} size
+ * @property {number} filledSize
+ * @property {number} remainingSize
+ * @property {string} status
+ * @property {string} clientTag
+ * @property {number} createdAt
+ * @property {boolean} [isSynthetic]
+ * @property {number} [_seq]
+ */
+
+/**
+ * @typedef {Object} OrderFill
+ * @property {string} id
+ * @property {string} symbol
+ * @property {number} price
+ * @property {number} size
+ * @property {'BUY'|'SELL'} side
+ * @property {string} makerOrderId
+ * @property {string} takerOrderId
+ * @property {string} makerAccountId
+ * @property {string} takerAccountId
+ * @property {boolean} restingWasSynthetic
+ * @property {string} restingStatus
+ * @property {number} restingFilledSize
+ * @property {number} timestamp
+ */
 
 let seqCounter = 1000;
+
+/**
+ * Generates a unique monotonic order or trade identifier.
+ * @param {string} [prefix='ORD']
+ * @returns {string}
+ */
 function nextId(prefix = 'ORD') {
   seqCounter += 1;
   const rand = crypto.randomBytes(2).toString('hex').toUpperCase();
   return `${prefix}-${Date.now().toString(36).toUpperCase()}-${seqCounter}-${rand}`;
 }
 
+/**
+ * Compares two resting orders under strict Price-Time Priority (FIFO).
+ * Returns < 0 if `a` has higher priority than `b`, > 0 if lower priority.
+ * @param {RestingOrder} a
+ * @param {RestingOrder} b
+ * @param {boolean} isBuy
+ * @returns {number}
+ */
+function compareFifoPriority(a, b, isBuy) {
+  if (a.price !== b.price) {
+    return isBuy ? b.price - a.price : a.price - b.price;
+  }
+  if (a.createdAt !== b.createdAt) {
+    return a.createdAt - b.createdAt;
+  }
+  return (a._seq || 0) - (b._seq || 0);
+}
+
+/**
+ * Binary-search upper-bound insertion index in O(log N) preserving strict Price-Time FIFO priority.
+ * @param {RestingOrder[]} book
+ * @param {RestingOrder} order
+ * @param {boolean} isBuy
+ * @returns {number}
+ */
+function findBinaryInsertIndex(book, order, isBuy) {
+  let lo = 0;
+  let hi = book.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (compareFifoPriority(book[mid], order, isBuy) <= 0) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
 class Orderbook {
+  /**
+   * @param {import('../db/database').InstrumentRecord} instrument
+   * @param {import('node:sqlite').DatabaseSync | null} [dbInstance=null]
+   */
   constructor(instrument, dbInstance = null) {
+    if (!instrument || typeof instrument !== 'object' || !instrument.symbol) {
+      throw new Error('Invalid instrument configuration');
+    }
     this.symbol = instrument.symbol;
     this.instrument = instrument;
     this.tickSize = instrument.tick_size || 0.01;
@@ -22,8 +110,10 @@ class Orderbook {
 
     // Individual resting orders sorted by Price-Time Priority (FIFO)
     // Bids: highest price first, then earliest timestamp (createdAt), then seq
+    /** @type {RestingOrder[]} */
     this.bids = [];
     // Asks: lowest price first, then earliest timestamp (createdAt), then seq
+    /** @type {RestingOrder[]} */
     this.asks = [];
 
     this._seq = 0;
@@ -34,6 +124,10 @@ class Orderbook {
     return this.db || getDb();
   }
 
+  /**
+   * Seeds initial institutional L2 resting depth around `centerPrice`.
+   * @param {number} [centerPrice=this.lastPrice]
+   */
   seedRestingBook(centerPrice = this.lastPrice) {
     this.bids = [];
     this.asks = [];
@@ -85,39 +179,37 @@ class Orderbook {
     }
   }
 
+  /**
+   * Inserts a resting order into `this.bids` or `this.asks` using O(log N) binary search
+   * instead of O(N log N) full-array sort, preserving strict (price, createdAt, _seq) FIFO priority.
+   * @param {RestingOrder} order
+   */
   _insertResting(order) {
     this._seq += 1;
     order._seq = this._seq;
-    if (order.side === 'BUY') {
-      this.bids.push(order);
-      this.bids.sort((a, b) => {
-        if (b.price !== a.price) return b.price - a.price;
-        if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
-        return a._seq - b._seq;
-      });
-    } else {
-      this.asks.push(order);
-      this.asks.sort((a, b) => {
-        if (a.price !== b.price) return a.price - b.price;
-        if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
-        return a._seq - b._seq;
-      });
-    }
+    const isBuy = order.side === 'BUY';
+    const targetBook = isBuy ? this.bids : this.asks;
+    const insertIdx = findBinaryInsertIndex(targetBook, order, isBuy);
+    targetBook.splice(insertIdx, 0, order);
   }
 
-  submitOrder(params) {
+  /**
+   * Validates and normalizes incoming order parameters.
+   * @param {Record<string, any>} params
+   */
+  _normalizeAndValidateOrder(params) {
+    if (!params || typeof params !== 'object') {
+      throw new Error('Invalid order payload: expected object');
+    }
     const now = Date.now();
     const side = String(params.side || 'BUY').toUpperCase();
     const type = String(params.type || 'LIMIT').toUpperCase();
-    const size = Number(params.size);
-    const accountId = params.accountId || 'ACC-INST-01';
-    const id = params.id || nextId('ORD');
-    const clientTag = params.clientTag || params.client_tag || 'MANUAL-TICKET';
-    const isSynthetic = Boolean(params.isSynthetic);
 
-    if (!Number.isFinite(size) || size <= 0) {
+    if (typeof params.size === 'boolean' || !isFiniteNumber(params.size) || Number(params.size) <= 0) {
       throw new Error('Invalid order size: must be a positive number');
     }
+    const size = Number(params.size);
+
     if (side !== 'BUY' && side !== 'SELL') {
       throw new Error('Invalid order side: must be BUY or SELL');
     }
@@ -126,64 +218,123 @@ class Orderbook {
     }
 
     const snap = this.getSnapshot(5);
-    let price = params.price !== undefined && params.price !== null ? Number(params.price) : null;
+    let price = null;
     if (type === 'LIMIT') {
-      if (!Number.isFinite(price) || price <= 0) {
+      if (typeof params.price === 'boolean' || !isFiniteNumber(params.price) || Number(params.price) <= 0) {
         throw new Error('Invalid limit price: must be a positive number');
       }
-      price = roundToTick(price, this.tickSize);
+      price = roundToTick(Number(params.price), this.tickSize);
     } else {
       price = side === 'BUY'
         ? (snap.asks[0]?.price || this.lastPrice)
         : (snap.bids[0]?.price || this.lastPrice);
     }
 
-    if (!isSynthetic) {
-      const db = this._getDb();
-      if (db) {
-        const accountRow = db.prepare('SELECT cash_balance, margin_used FROM accounts WHERE id = ?').get(accountId);
-        if (!accountRow) {
-          throw new Error(`Unknown account: ${accountId}`);
-        }
-        const orderNotional = price * size;
-        const maxBuyingPower = Number(accountRow.cash_balance) * 5;
-        if (accountRow.cash_balance <= 0 || orderNotional > maxBuyingPower) {
-          throw new Error(
-            `Insufficient buying power / margin limit exceeded: notional $${orderNotional.toFixed(2)} exceeds 5x buying power limit ($${Math.max(0, maxBuyingPower).toFixed(2)})`
-          );
-        }
-      }
-    }
+    const accountId = String(params.accountId || 'ACC-INST-01');
+    const id = params.id || nextId('ORD');
+    const clientTag = String(params.clientTag || params.client_tag || 'MANUAL-TICKET');
+    const isSynthetic = Boolean(params.isSynthetic);
+    const preventSelfTrade = Boolean(params.preventSelfTrade || params.stpMode);
+    const stpMode = String(params.stpMode || 'CANCEL_TAKER').toUpperCase();
 
-    const incoming = {
-      id,
-      accountId,
-      symbol: this.symbol,
-      side,
-      type,
-      price,
-      size,
-      filledSize: 0,
-      remainingSize: size,
-      status: 'OPEN',
-      clientTag,
-      createdAt: params.createdAt || now,
-      isSynthetic
+    return {
+      incoming: {
+        id,
+        accountId,
+        symbol: this.symbol,
+        side: /** @type {'BUY'|'SELL'} */ (side),
+        type: /** @type {'LIMIT'|'MARKET'} */ (type),
+        price,
+        size,
+        filledSize: 0,
+        remainingSize: size,
+        status: 'OPEN',
+        clientTag,
+        createdAt: isFiniteNumber(params.createdAt) ? Number(params.createdAt) : now,
+        isSynthetic
+      },
+      preventSelfTrade,
+      stpMode
     };
+  }
 
+  /**
+   * Enforces 5x cash buying-power margin check on non-synthetic orders.
+   * @param {RestingOrder} incoming
+   */
+  _verifyBuyingPower(incoming) {
+    if (incoming.isSynthetic) return;
+    const db = this._getDb();
+    if (!db) return;
+
+    const accountRow = db.prepare('SELECT cash_balance, margin_used FROM accounts WHERE id = ?').get(incoming.accountId);
+    if (!accountRow) {
+      throw new Error(`Unknown account: ${incoming.accountId}`);
+    }
+    const orderNotional = incoming.price * incoming.size;
+    const maxBuyingPower = Number(accountRow.cash_balance) * 5;
+    if (accountRow.cash_balance <= 0 || orderNotional > maxBuyingPower) {
+      throw new Error(
+        `Insufficient buying power / margin limit exceeded: notional $${orderNotional.toFixed(2)} exceeds 5x buying power limit ($${Math.max(0, maxBuyingPower).toFixed(2)})`
+      );
+    }
+  }
+
+  /**
+   * Executes FIFO price-time priority matching sweep against the opposite book.
+   * Uses cursor advancement + batch head splice instead of O(N) per-match `.splice(idx, 1)`.
+   * @param {RestingOrder} incoming
+   * @param {boolean} preventSelfTrade
+   * @param {string} stpMode
+   * @returns {{ fills: OrderFill[], stpTriggered: boolean }}
+   */
+  _executeMatchSweep(incoming, preventSelfTrade, stpMode) {
+    /** @type {OrderFill[]} */
     const fills = [];
-    const oppositeBook = side === 'BUY' ? this.asks : this.bids;
+    const oppositeBook = incoming.side === 'BUY' ? this.asks : this.bids;
+    let cursor = 0;
+    let contiguousHeadConsumed = 0;
+    let hasNonContiguousRemoval = false;
+    let stpTriggered = false;
 
-    let idx = 0;
-    while (idx < oppositeBook.length && incoming.remainingSize > 1e-9) {
-      const resting = oppositeBook[idx];
+    while (cursor < oppositeBook.length && incoming.remainingSize > 1e-9) {
+      const resting = oppositeBook[cursor];
+      if (resting.remainingSize <= 1e-9) {
+        cursor += 1;
+        continue;
+      }
+
       const priceCrosses =
-        type === 'MARKET' ||
-        (side === 'BUY' && incoming.price >= resting.price) ||
-        (side === 'SELL' && incoming.price <= resting.price);
+        incoming.type === 'MARKET' ||
+        (incoming.side === 'BUY' && incoming.price >= resting.price) ||
+        (incoming.side === 'SELL' && incoming.price <= resting.price);
 
       if (!priceCrosses) {
-        // Because oppositeBook is sorted by best price first, no subsequent order can match
+        break;
+      }
+
+      // Self-Trade Prevention (STP) when enabled and accounts match
+      if (preventSelfTrade && incoming.accountId && incoming.accountId === resting.accountId) {
+        stpTriggered = true;
+        if (stpMode === 'CANCEL_MAKER') {
+          resting.remainingSize = 0;
+          resting.status = 'CANCELLED';
+          if (cursor === contiguousHeadConsumed) {
+            contiguousHeadConsumed += 1;
+          } else {
+            hasNonContiguousRemoval = true;
+          }
+          cursor += 1;
+          continue;
+        }
+        if (stpMode === 'SKIP') {
+          hasNonContiguousRemoval = true;
+          cursor += 1;
+          continue;
+        }
+        // Default CANCEL_TAKER: cancel remaining incoming taker qty immediately
+        incoming.remainingSize = 0;
+        incoming.status = incoming.filledSize > 1e-9 ? 'PARTIAL' : 'CANCELLED';
         break;
       }
 
@@ -199,12 +350,12 @@ class Orderbook {
 
       this.lastPrice = matchPrice;
 
-      const fill = {
+      fills.push({
         id: nextId('TRD'),
         symbol: this.symbol,
         price: matchPrice,
         size: matchSize,
-        side,
+        side: incoming.side,
         makerOrderId: resting.id,
         takerOrderId: incoming.id,
         makerAccountId: resting.accountId,
@@ -213,26 +364,55 @@ class Orderbook {
         restingStatus: resting.status,
         restingFilledSize: resting.filledSize,
         timestamp: Date.now()
-      };
-      fills.push(fill);
+      });
 
       if (resting.remainingSize <= 1e-9) {
-        oppositeBook.splice(idx, 1);
-      } else {
-        idx += 1;
+        if (!hasNonContiguousRemoval && cursor === contiguousHeadConsumed) {
+          contiguousHeadConsumed += 1;
+        } else {
+          hasNonContiguousRemoval = true;
+        }
+      }
+      cursor += 1;
+    }
+
+    // Batch-evict consumed resting orders in a single operation after the matching loop
+    if (contiguousHeadConsumed > 0) {
+      oppositeBook.splice(0, contiguousHeadConsumed);
+    }
+    if (hasNonContiguousRemoval) {
+      for (let i = oppositeBook.length - 1; i >= 0; i--) {
+        if (oppositeBook[i].remainingSize <= 1e-9) {
+          oppositeBook.splice(i, 1);
+        }
       }
     }
 
-    if (incoming.filledSize <= 1e-9) {
-      incoming.status = type === 'MARKET' ? 'CANCELLED' : 'OPEN';
+    return { fills, stpTriggered };
+  }
+
+  /**
+   * Submits a LIMIT or MARKET order to the FIFO Orderbook.
+   * @param {Record<string, any>} params
+   */
+  submitOrder(params) {
+    const { incoming, preventSelfTrade, stpMode } = this._normalizeAndValidateOrder(params);
+    this._verifyBuyingPower(incoming);
+
+    const { fills, stpTriggered } = this._executeMatchSweep(incoming, preventSelfTrade, stpMode);
+
+    if (stpTriggered && stpMode === 'CANCEL_TAKER' && incoming.remainingSize <= 1e-9 && incoming.filledSize <= 1e-9) {
+      incoming.status = 'CANCELLED';
+    } else if (incoming.filledSize <= 1e-9) {
+      incoming.status = incoming.type === 'MARKET' ? 'CANCELLED' : 'OPEN';
     } else if (incoming.remainingSize <= 1e-9) {
-      incoming.status = 'FILLED';
+      incoming.status = stpTriggered && stpMode === 'CANCEL_TAKER' && incoming.filledSize < incoming.size ? 'PARTIAL' : 'FILLED';
       incoming.remainingSize = 0;
     } else {
-      incoming.status = type === 'MARKET' ? 'FILLED' : 'PARTIAL';
+      incoming.status = incoming.type === 'MARKET' ? 'FILLED' : 'PARTIAL';
     }
 
-    if (type === 'LIMIT' && incoming.remainingSize > 1e-9) {
+    if (incoming.type === 'LIMIT' && incoming.remainingSize > 1e-9 && incoming.status !== 'CANCELLED') {
       this._insertResting(incoming);
     }
 
@@ -258,7 +438,69 @@ class Orderbook {
       createdAt: incoming.createdAt
     };
 
-    return { order: orderRecord, fills };
+    return { order: orderRecord, fills, stpTriggered };
+  }
+
+  /**
+   * Amends an active resting order's price and/or total size.
+   * - Decreasing size at the same price preserves existing queue time priority.
+   * - Changing price or increasing size loses time priority and re-inserts at the back of the level.
+   * @param {string} orderId
+   * @param {{ price?: number, size?: number }} updates
+   * @returns {RestingOrder | null}
+   */
+  amendOrder(orderId, updates = {}) {
+    if (!orderId || !updates || typeof updates !== 'object') {
+      throw new Error('Invalid amendOrder arguments');
+    }
+
+    let book = this.bids;
+    let idx = this.bids.findIndex((o) => o.id === orderId);
+    if (idx === -1) {
+      book = this.asks;
+      idx = this.asks.findIndex((o) => o.id === orderId);
+    }
+    if (idx === -1) {
+      return null;
+    }
+
+    const existing = book[idx];
+    let newPrice = existing.price;
+    let newSize = existing.size;
+
+    if (updates.price !== undefined && updates.price !== null) {
+      if (typeof updates.price === 'boolean' || !isFiniteNumber(updates.price) || Number(updates.price) <= 0) {
+        throw new Error('Invalid amended price: must be a positive finite number');
+      }
+      newPrice = roundToTick(Number(updates.price), this.tickSize);
+    }
+
+    if (updates.size !== undefined && updates.size !== null) {
+      if (typeof updates.size === 'boolean' || !isFiniteNumber(updates.size) || Number(updates.size) <= existing.filledSize) {
+        throw new Error('Invalid amended size: must be a finite number greater than filledSize');
+      }
+      newSize = Number(updates.size);
+    }
+
+    const priceChanged = Math.abs(newPrice - existing.price) > 1e-9;
+    const sizeIncreased = newSize > existing.size + 1e-9;
+
+    existing.price = newPrice;
+    existing.size = newSize;
+    existing.remainingSize = Number((newSize - existing.filledSize).toFixed(6));
+
+    if (priceChanged || sizeIncreased) {
+      book.splice(idx, 1);
+      existing.createdAt = Date.now();
+      this._insertResting(existing);
+    }
+
+    const db = this._getDb();
+    if (db && !existing.isSynthetic) {
+      db.prepare('UPDATE orders SET price = ?, size = ? WHERE id = ?').run(existing.price, existing.size, orderId);
+    }
+
+    return existing;
   }
 
   _replenishBookLiquidity() {
@@ -310,6 +552,11 @@ class Orderbook {
     }
   }
 
+  /**
+   * Persists non-synthetic order states, fills, and position updates in an atomic SQLite transaction.
+   * @param {RestingOrder} incoming
+   * @param {OrderFill[]} fills
+   */
   _persistExecution(incoming, fills) {
     const db = this._getDb();
     if (!db) return;
@@ -377,13 +624,22 @@ class Orderbook {
     } catch (err) {
       try {
         db.exec('ROLLBACK');
-      } catch (_) {
-        // ignore rollback error
+      } catch (rollbackErr) {
+        logDiagnostic('orderbook', 'persist_rollback_error', rollbackErr);
       }
       throw err;
     }
   }
 
+  /**
+   * Updates account cash balance and position average entry / realized PnL on trade fill.
+   * @param {import('node:sqlite').DatabaseSync} db
+   * @param {string} accountId
+   * @param {string} symbol
+   * @param {'BUY'|'SELL'} side
+   * @param {number} fillPrice
+   * @param {number} fillSize
+   */
   _applyAccountAndPositionUpdate(db, accountId, symbol, side, fillPrice, fillSize) {
     if (!accountId) return;
     const notional = fillPrice * fillSize;
@@ -444,6 +700,11 @@ class Orderbook {
     `).run(newQty, Number(newAvg.toFixed(4)), Number(realizedPnl.toFixed(4)), accountId, symbol);
   }
 
+  /**
+   * Cancels a resting order by ID.
+   * @param {string} orderId
+   * @returns {RestingOrder | null}
+   */
   cancelOrder(orderId) {
     let removed = null;
     const bidIdx = this.bids.findIndex((o) => o.id === orderId);
@@ -466,6 +727,10 @@ class Orderbook {
     return removed;
   }
 
+  /**
+   * Aggregates resting orders into an L2 price-level snapshot up to `depth` levels.
+   * @param {number} [depth=15]
+   */
   getSnapshot(depth = 15) {
     const aggregateLevels = (orders, maxLevels) => {
       const levels = [];
@@ -510,8 +775,12 @@ class Orderbook {
 }
 
 class MatchingEngine {
+  /**
+   * @param {import('node:sqlite').DatabaseSync | null} [dbInstance=null]
+   */
   constructor(dbInstance = null) {
     this.db = dbInstance;
+    /** @type {Map<string, Orderbook>} */
     this.books = new Map();
     this.initBooks();
   }
@@ -527,10 +796,10 @@ class MatchingEngine {
       try {
         const rows = db.prepare('SELECT * FROM instruments').all();
         if (rows && rows.length > 0) {
-          instruments = rows;
+          instruments = /** @type {import('../db/database').InstrumentRecord[]} */ (rows);
         }
-      } catch (_) {
-        // fallback to INITIAL_INSTRUMENTS
+      } catch (err) {
+        logDiagnostic('matchingEngine', 'initBooks_fallback', err);
       }
     }
     for (const inst of instruments) {
@@ -538,6 +807,10 @@ class MatchingEngine {
     }
   }
 
+  /**
+   * @param {string} symbol
+   * @returns {Orderbook}
+   */
   getBook(symbol) {
     const book = this.books.get(symbol);
     if (!book) {
@@ -546,12 +819,37 @@ class MatchingEngine {
     return book;
   }
 
+  /**
+   * @param {Record<string, any>} orderParams
+   */
   submitOrder(orderParams) {
+    if (!orderParams || typeof orderParams !== 'object') {
+      throw new Error('Invalid orderParams: expected object');
+    }
     const symbol = orderParams.symbol || 'BTC-USD';
     const book = this.getBook(symbol);
     return book.submitOrder(orderParams);
   }
 
+  /**
+   * @param {string} orderId
+   * @param {{ price?: number, size?: number, symbol?: string }} updates
+   */
+  amendOrder(orderId, updates = {}) {
+    if (updates && updates.symbol && this.books.has(updates.symbol)) {
+      return this.books.get(updates.symbol).amendOrder(orderId, updates);
+    }
+    for (const book of this.books.values()) {
+      const amended = book.amendOrder(orderId, updates);
+      if (amended) return amended;
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} orderId
+   * @param {string | null} [symbol=null]
+   */
   cancelOrder(orderId, symbol = null) {
     if (symbol && this.books.has(symbol)) {
       const cancelled = this.books.get(symbol).cancelOrder(orderId);
@@ -561,7 +859,6 @@ class MatchingEngine {
       const cancelled = book.cancelOrder(orderId);
       if (cancelled) return cancelled;
     }
-    // Also check if order exists in SQLite and mark CANCELLED if it was OPEN/PARTIAL
     const db = this._getDb();
     if (db) {
       const row = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
@@ -573,6 +870,10 @@ class MatchingEngine {
     return null;
   }
 
+  /**
+   * @param {string} symbol
+   * @param {number} [depth=15]
+   */
   getSnapshot(symbol, depth = 15) {
     return this.getBook(symbol).getSnapshot(depth);
   }
@@ -581,5 +882,7 @@ class MatchingEngine {
 module.exports = {
   Orderbook,
   MatchingEngine,
-  nextId
+  nextId,
+  findBinaryInsertIndex,
+  compareFifoPriority
 };

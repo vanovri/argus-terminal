@@ -263,10 +263,17 @@ class DarkPoolEngine {
    *   - Midpoint / VWAP Peg crossing price with zero bid-ask spread leakage
    */
   submitDarkOrder(params = {}) {
+    const rawSizeArg = params.size ?? params.totalSize;
+    if (typeof rawSizeArg === 'boolean') {
+      throw new RangeError('Dark Pool order size must be a positive number');
+    }
+    if (typeof params.minQty === 'boolean' || (params.minQty !== undefined && (!Number.isFinite(Number(params.minQty)) || Number(params.minQty) < 0))) {
+      throw new RangeError('Invalid minQty: must be a non-negative finite number');
+    }
     const symbol = String(params.symbol || 'BTC-USD').toUpperCase();
     const side = String(params.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
     const pegType = String(params.pegType || params.type || 'MIDPOINT_PEG').toUpperCase();
-    const size = Number(params.size ?? params.totalSize ?? 1.0);
+    const size = Number(rawSizeArg ?? 1.0);
     const minQty = Math.max(0, Number(params.minQty ?? params.minimumQty ?? 0));
     const limitPrice = params.limitPrice !== undefined && params.limitPrice !== null && params.limitPrice !== ''
       ? Number(params.limitPrice)

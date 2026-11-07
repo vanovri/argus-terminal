@@ -9,10 +9,12 @@ const { WebSocketServer, WebSocket } = require('ws');
 const { initDatabase } = require('../db/database');
 const { MatchingEngine } = require('../engine/orderbook');
 const { MarketSimulator } = require('../engine/marketSim');
+const { logDiagnostic } = require('../engine/validation');
 const { createApiRouter } = require('./routes');
 
 const PUBLIC_DIR = path.resolve(__dirname, '../../public');
 
+/** @type {Record<string, string>} */
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -24,15 +26,38 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
+/**
+ * Serves static files from `PUBLIC_DIR` with strict path-traversal containment and URIError protection.
+ * @param {any} req
+ * @param {any} res
+ */
 function serveStaticFile(req, res) {
-  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  let relPath = decodeURIComponent(parsedUrl.pathname);
+  let parsedUrl;
+  let relPath;
+  try {
+    parsedUrl = new URL(req.url || '/', `http://${req.headers?.host || 'localhost'}`);
+    relPath = decodeURIComponent(parsedUrl.pathname);
+  } catch (err) {
+    logDiagnostic('server', 'malformed_static_url', err);
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Bad Request: malformed URL or percent-encoding');
+    return;
+  }
+
+  if (relPath.includes('\0')) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Bad Request');
+    return;
+  }
+
   if (relPath === '/' || relPath === '') {
     relPath = '/index.html';
   }
 
-  const safePath = path.normalize(path.join(PUBLIC_DIR, relPath));
-  if (!safePath.startsWith(PUBLIC_DIR)) {
+  // Resolve against PUBLIC_DIR and enforce strict path.sep boundary to block sibling-prefix traversal (e.g. /../public-evil)
+  const normalizedRel = relPath.replace(/^[/\\]+/, '');
+  const safePath = path.resolve(PUBLIC_DIR, normalizedRel);
+  if (safePath !== PUBLIC_DIR && !safePath.startsWith(PUBLIC_DIR + path.sep)) {
     res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Forbidden');
     return;
@@ -52,7 +77,8 @@ function serveStaticFile(req, res) {
       'Cache-Control': 'no-cache'
     });
     const stream = fs.createReadStream(safePath);
-    stream.on('error', () => {
+    stream.on('error', (streamErr) => {
+      logDiagnostic('server', 'static_stream_error', streamErr);
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
       }
@@ -62,6 +88,79 @@ function serveStaticFile(req, res) {
   });
 }
 
+/**
+ * Handles an incoming WebSocket message from a terminal client.
+ * @param {any} ws
+ * @param {Buffer|string} raw
+ * @param {Record<string, any>} engine
+ */
+function handleWsClientMessage(ws, raw, engine) {
+  try {
+    const msg = JSON.parse(raw.toString('utf8'));
+    if (msg.type === 'SUBSCRIBE' && msg.symbol && engine.books.has(msg.symbol)) {
+      ws.subscribedSymbol = msg.symbol;
+      ws.send(JSON.stringify({
+        type: 'ORDERBOOK',
+        symbol: msg.symbol,
+        orderbook: engine.getSnapshot(msg.symbol, 15)
+      }));
+    } else if (msg.type === 'COMMAND' && typeof msg.command === 'string') {
+      const cleaned = msg.command.replace(/<GO>/gi, '').trim().toUpperCase();
+      const token = cleaned.split(/\s+/)[0];
+      if (engine.books.has(token)) {
+        ws.subscribedSymbol = token;
+        ws.send(JSON.stringify({
+          type: 'ORDERBOOK',
+          symbol: token,
+          orderbook: engine.getSnapshot(token, 15)
+        }));
+      }
+      ws.send(JSON.stringify({
+        type: 'COMMAND_ACK',
+        command: msg.command,
+        symbol: engine.books.has(token) ? token : null,
+        timestamp: Date.now()
+      }));
+    }
+  } catch (err) {
+    logDiagnostic('ws', 'invalid_client_message', err);
+  }
+}
+
+/**
+ * Attaches MarketSimulator event listeners to broadcast real-time updates to WebSocket clients.
+ * @param {Record<string, any>} marketSim
+ * @param {(payload: any, filterFn?: ((client: any) => boolean) | null) => void} broadcast
+ */
+function attachMarketSimBroadcasters(marketSim, broadcast) {
+  marketSim.on('tick', ({ tickers, timestamp }) => {
+    broadcast({ type: 'TICK', tickers, timestamp });
+  });
+
+  marketSim.on('orderbook', ({ symbol, orderbook }) => {
+    broadcast(
+      { type: 'ORDERBOOK', symbol, orderbook },
+      (client) => !client.subscribedSymbol || client.subscribedSymbol === symbol
+    );
+  });
+
+  marketSim.on('trade', (trade) => {
+    broadcast({ type: 'TRADE', trade });
+  });
+
+  marketSim.on('candle', ({ symbol, candle }) => {
+    broadcast({ type: 'CANDLE', symbol, candle });
+  });
+
+  marketSim.on('news', (item) => {
+    broadcast({ type: 'NEWS', item });
+  });
+}
+
+/**
+ * Creates and starts (unless `autoStart === false`) an Argus Terminal HTTP + WebSocket server instance.
+ * @param {{ port?: number, dbMemory?: boolean, simIntervalMs?: number, autoStart?: boolean }} [options={}]
+ */
 function createArgusServer(options = {}) {
   const requestedPort = options.port !== undefined ? Number(options.port) : Number(process.env.PORT || 3400);
   const dbMemory = options.dbMemory !== undefined ? Boolean(options.dbMemory) : process.env.ARGUS_DB_MEMORY === '1';
@@ -71,6 +170,7 @@ function createArgusServer(options = {}) {
   const engine = new MatchingEngine(db);
   const marketSim = new MarketSimulator(engine, db);
 
+  /** @type {WebSocketServer | null} */
   let wss = null;
 
   function broadcast(payload, filterFn = null) {
@@ -104,77 +204,22 @@ function createArgusServer(options = {}) {
   wss.on('connection', (ws) => {
     ws.subscribedSymbol = null;
 
-    // Send initial SNAPSHOT on connect
     ws.send(JSON.stringify({
       type: 'SNAPSHOT',
       tickers: marketSim.getTickers(),
       news: marketSim.getNews(20)
     }));
 
-    // Also send initial BTC-USD orderbook snapshot
     ws.send(JSON.stringify({
       type: 'ORDERBOOK',
       symbol: 'BTC-USD',
       orderbook: engine.getSnapshot('BTC-USD', 15)
     }));
 
-    ws.on('message', (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString('utf8'));
-        if (msg.type === 'SUBSCRIBE' && msg.symbol && engine.books.has(msg.symbol)) {
-          ws.subscribedSymbol = msg.symbol;
-          ws.send(JSON.stringify({
-            type: 'ORDERBOOK',
-            symbol: msg.symbol,
-            orderbook: engine.getSnapshot(msg.symbol, 15)
-          }));
-        } else if (msg.type === 'COMMAND' && typeof msg.command === 'string') {
-          const cleaned = msg.command.replace(/<GO>/gi, '').trim().toUpperCase();
-          const token = cleaned.split(/\s+/)[0];
-          if (engine.books.has(token)) {
-            ws.subscribedSymbol = token;
-            ws.send(JSON.stringify({
-              type: 'ORDERBOOK',
-              symbol: token,
-              orderbook: engine.getSnapshot(token, 15)
-            }));
-          }
-          ws.send(JSON.stringify({
-            type: 'COMMAND_ACK',
-            command: msg.command,
-            symbol: engine.books.has(token) ? token : null,
-            timestamp: Date.now()
-          }));
-        }
-      } catch (_) {
-        // Ignore malformed client WS messages
-      }
-    });
+    ws.on('message', (raw) => handleWsClientMessage(ws, raw, engine));
   });
 
-  // Forward MarketSimulator events to WebSocket clients
-  marketSim.on('tick', ({ tickers, timestamp }) => {
-    broadcast({ type: 'TICK', tickers, timestamp });
-  });
-
-  marketSim.on('orderbook', ({ symbol, orderbook }) => {
-    broadcast(
-      { type: 'ORDERBOOK', symbol, orderbook },
-      (client) => !client.subscribedSymbol || client.subscribedSymbol === symbol
-    );
-  });
-
-  marketSim.on('trade', (trade) => {
-    broadcast({ type: 'TRADE', trade });
-  });
-
-  marketSim.on('candle', ({ symbol, candle }) => {
-    broadcast({ type: 'CANDLE', symbol, candle });
-  });
-
-  marketSim.on('news', (item) => {
-    broadcast({ type: 'NEWS', item });
-  });
+  attachMarketSimBroadcasters(marketSim, broadcast);
 
   let listenPromise = null;
 
@@ -214,18 +259,21 @@ function createArgusServer(options = {}) {
     },
     async stop() {
       marketSim.stop();
+      if (typeof handleApiRequest.close === 'function') {
+        handleApiRequest.close();
+      }
       if (wss) {
         for (const client of wss.clients) {
           try {
             client.terminate();
-          } catch (_) {
-            // ignore
+          } catch (err) {
+            logDiagnostic('ws', 'client_terminate_error', err);
           }
         }
-        await new Promise((resolve) => wss.close(() => resolve()));
+        await new Promise((resolve) => wss.close(() => resolve(undefined)));
       }
       if (server.listening) {
-        await new Promise((resolve) => server.close(() => resolve()));
+        await new Promise((resolve) => server.close(() => resolve(undefined)));
       }
       listenPromise = null;
     },
@@ -236,7 +284,6 @@ function createArgusServer(options = {}) {
 
   if (options.autoStart !== false) {
     const p = controller.start();
-    // Attach controller properties onto the Promise so both sync and awaited usage work seamlessly
     Object.assign(p, controller);
     return p;
   }
@@ -255,5 +302,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  createArgusServer
+  createArgusServer,
+  serveStaticFile,
+  PUBLIC_DIR
 };
