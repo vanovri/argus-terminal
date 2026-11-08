@@ -20,6 +20,7 @@ graph TD
     UI_Macro["macro.html (NSS Curve, Bond Desk, LOB Replay, Dark Pool)"]
     UI_Deck["deck.html (10-Slide Overview Deck)"]
     JS_App["public/js/app.js (State & WS Client)"]
+    JS_Inline["options.html / macro.html inline controllers, fetch and Canvas state"]
     JS_Charts["public/js/charts.js (Candles & Depth Canvas)"]
     JS_Comp["public/js/components.js (DOM Panes)"]
   end
@@ -45,8 +46,9 @@ graph TD
   end
 
   UI_Main --> JS_App
-  UI_Opt --> JS_App
-  UI_Macro --> JS_App
+  UI_Opt --> JS_Inline
+  UI_Macro --> JS_Inline
+  JS_Inline <-->|"Local REST JSON"| Router
   JS_App --> JS_Charts
   JS_App --> JS_Comp
   JS_App <-->|"REST JSON (64 KB cap)"| Router
@@ -178,7 +180,7 @@ Argus Terminal partitions state across three synchronized layers:
    - `MatchingEngine` holds one `Orderbook` instance per symbol in a `Map`, keeping sorted `bids` and `asks` arrays in RAM for matching (latency depends on the workload) while skipping SQLite writes on unfilled synthetic market-maker quotes.
    - `SlabOrderbook` maintains preallocated `TypedArray` slab arenas (`orderIds`, `prices`, `priceTicks`, `sizes`, `sizeLots`, `nextIdx`, `prevIdx`, `activeFlags`, `freeStack`, `idToSlot`) mirrored alongside live ticks for `/api/slab-metrics`.
    - `AlgoExecutionEngine`, `LobTimeMachine`, `DarkPoolEngine`, and `FixProtocolEngine` hold bounded or session-scoped in-memory registries (`algos` Map, `journals` Map of keyframes + deltas, `books`/`darkTrades`, and 60-entry `sessionLog` ring) instantiated per `createArgusServer()` call.
-3. **Browser Client State (`public/js/app.js` & Specialized Workspaces)**:
+3. **Browser Client State (`public/js/app.js` and separate inline workspace controllers)**:
    - Maintained in a plain singleton JS state store (`activeSymbol`, `activeAccount`, `tickers`, `orderbook`, `candles`, `trades`, `portfolio`, `news`, `wsConnected`).
    - Hydrated initially via parallel `fetch('/api/...')` calls on page load, then updated incrementally by WebSocket push frames (`SNAPSHOT`, `TICK`, `ORDERBOOK`, `TRADE`, `DARK_TRADE`, `CANDLE`, `NEWS`, `PORTFOLIO_UPDATE`), triggering targeted DOM patches and `requestAnimationFrame` Canvas redraws.
 
@@ -271,3 +273,5 @@ npm run bench
 Synthetic quote replenishment in `src/engine/orderbook.js` anchors generated bids/asks against the opposite best quote and avoids duplicate generated price levels. This remains a local liquidity simulation. It does not acquire exchange quotes.
 
 UI metric provenance: `public/js/components.js:742-751` and `796-801` substitute literal example risk, allocation and backtest values when response fields are absent. `renderAlgosAndSlab` also substitutes 1,845,000 operations/second and labels every displayed value with zero GC. These fallbacks are display defaults, not benchmark measurements or proof that a strategy produced those results. Indicator redraws recompute bounded historical arrays, so requestAnimationFrame coalescing alone does not remove that computation.
+
+Specialized workspace execution: only the main terminal loads public/js/app.js, components.js and charts.js. options.html and macro.html own separate inline IIFE state, fetch calls and Canvas renderers. Opening options.html automatically invokes synthetic local FIX-order and SOR POST requests, so page initialization can change the local demo state. No external broker receives these requests. Macro replay polls can overlap because timer calls have no cancellation or revision guard. Some specialized UI missing-data fallbacks also display literal parity/savings values. Those labels do not independently verify financial or execution performance.
