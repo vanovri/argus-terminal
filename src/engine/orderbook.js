@@ -509,12 +509,23 @@ class Orderbook {
     const existingBidPrices = new Set(this.bids.map((b) => b.price));
     const existingAskPrices = new Set(this.asks.map((a) => a.price));
 
+    const bidAnchor =
+      this.asks.length > 0 ? Math.min(refPrice, this.asks[0].price) : refPrice;
+    const askAnchor =
+      this.bids.length > 0 ? Math.max(refPrice, this.bids[0].price) : refPrice;
+
     for (let level = 1; level <= 18; level++) {
-      const bidP = roundToTick(refPrice - level * this.tickSize, this.tickSize);
-      const askP = roundToTick(refPrice + level * this.tickSize, this.tickSize);
+      const bidP = roundToTick(bidAnchor - level * this.tickSize, this.tickSize);
+      const askP = roundToTick(askAnchor + level * this.tickSize, this.tickSize);
       const size = Number((this.lotSize * (15 + level * 3)).toFixed(4));
 
-      if (bidP > 0 && !existingBidPrices.has(bidP) && this.bids.length < 18) {
+      if (
+        bidP > 0 &&
+        (this.asks.length === 0 || bidP < this.asks[0].price) &&
+        !existingBidPrices.has(bidP) &&
+        this.bids.length < 18
+      ) {
+        existingBidPrices.add(bidP);
         this._insertResting({
           id: nextId('MM-BID'),
           accountId: 'ACC-INST-02',
@@ -532,7 +543,12 @@ class Orderbook {
         });
       }
 
-      if (!existingAskPrices.has(askP) && this.asks.length < 18) {
+      if (
+        (this.bids.length === 0 || askP > this.bids[0].price) &&
+        !existingAskPrices.has(askP) &&
+        this.asks.length < 18
+      ) {
+        existingAskPrices.add(askP);
         this._insertResting({
           id: nextId('MM-ASK'),
           accountId: 'ACC-INST-02',

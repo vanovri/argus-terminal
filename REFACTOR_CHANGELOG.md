@@ -4,7 +4,7 @@
 
 | Property | Value |
 | :--- | :--- |
-| **Repository Path** | `C:\Users\ardhy\.gemini\antigravity\scratch\argus-terminal` |
+| **Repository Path** | `.` |
 | **Original Branch** | `main` (`6596331`) |
 | **Refactor Branch** | `codex/auto-refactor-and-tests` (`8f74a8c`) |
 | **Pre-Refactor Stash** | `stash@{0}: On main: pre-refactor-backup-snapshot` (preserved in `git stash list`) |
@@ -114,5 +114,5 @@
 | **Full Test Suite (7 Suites)** | `npm test` | `0` |
 | **Unit Test Coverage** | `node --test --experimental-test-coverage tests/unit_engines_and_server.test.js` | `0` |
 | **Combined Coverage** | `node --test --test-concurrency=1 --experimental-test-coverage tests/unit_engines_and_server.test.js tests/e2e.test.js tests/security_pentest_poc.js tests/wave2_quant.test.js tests/wave3_derivatives_fix.test.js tests/wave4_macro_replay_darkpool.test.js` | `0` |
-| **ESLint Static Analysis** | `C:\Users\ardhy\.gemini\antigravity\brain\7b19fb5e-cc47-425f-9713-ee64d56c8136\scratch\qa-tools\qa-node\node_modules\.bin\eslint.cmd src/ tests/unit_engines_and_server.test.js` | `0` |
-| **TypeScript / JSDoc Check** | `C:\Users\ardhy\.gemini\antigravity\brain\7b19fb5e-cc47-425f-9713-ee64d56c8136\scratch\qa-tools\qa-node\node_modules\.bin\tsc.cmd --noEmit` | `0` |
+| **ESLint Static Analysis** | `npx eslint src/ tests/unit_engines_and_server.test.js` | `0` |
+| **TypeScript / JSDoc Check** | `npx tsc --noEmit` | `0` |

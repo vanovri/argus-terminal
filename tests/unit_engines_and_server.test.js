@@ -577,7 +577,11 @@ describe('QuantRisk Edge Cases (Empty Returns, Zero Variance, VaR, Backtest) Uni
 
             const bt = runStrategyBacktest(db, { symbol: 'BTC-USD', strategy: 'EMA_CROSS', initialCapital: 50000 });
             assert.equal(bt.initialCapital, 50000);
-            assert.ok(Array.isArray(bt.equityCurve));
+            assert.ok(Array.isArray(bt.equityCurve) && bt.equityCurve.length > 0);
+            assert.equal(bt.equityCurve[bt.equityCurve.length - 1].equity, bt.finalEquity);
+            assert.ok(bt.equityCurve.every((pt) => Number.isFinite(pt.equity) && pt.equity > 0));
+            assert.ok(Number.isFinite(bt.finalEquity) && bt.finalEquity > 0);
+            assert.ok(bt.maxDrawdownPct >= 0 && bt.maxDrawdownPct <= 100);
 
             assert.throws(() => computePortfolioVaR(db, engine, sim, 'ACC-INST-01', 0), /positive finite number/);
             assert.throws(() => runStrategyBacktest(db, { initialCapital: -100 }), /positive finite number/);
@@ -641,11 +645,19 @@ describe('YieldCurve & FixedIncome Edge Cases (Degenerate Tenors, Zero Coupon) U
         });
         assert.equal(zSpread.converged, true);
 
-        const shocked = shockBondPrice({ maturityYears: 10 }, [50]);
-        assert.ok(Array.isArray(shocked.scenarios));
+        const shocked = shockBondPrice({ maturityYears: 10 }, [-100, 0, 100]);
+        assert.equal(shocked.scenarios.length, 3);
+        assert.ok(shocked.scenarios[0].exactDirtyPrice > shocked.baseBond.dirtyPrice);
+        assert.equal(shocked.scenarios[1].exactPriceChange, 0);
+        assert.ok(shocked.scenarios[2].exactDirtyPrice < shocked.baseBond.dirtyPrice);
+        assert.ok(shocked.scenarios[2].exactPriceChange < 0);
 
         const snap = buildMacroBondDeskReport();
-        assert.ok(Array.isArray(snap.bonds));
+        assert.ok(Array.isArray(snap.bonds) && snap.bonds.length >= 4);
+        for (const bond of snap.bonds) {
+            assert.ok(bond.dirtyPrice > 0 && bond.macaulayDuration > 0 && bond.convexity > 0);
+        }
+        assert.ok(snap.deskSummary.totalNotionalUsd > 0 && snap.deskSummary.totalDv01Usd > 0);
     });
 });
 
@@ -733,7 +745,11 @@ describe('SmartOrderRouter, DarkPoolEngine, AlgoEngine & MarketSimulator Unit Su
             assert.throws(() => sor.routeOrder({ symbol: 'BTC-USD', side: 'BUY', totalSize: -1 }), /positive finite number/);
 
             const arb = sor.scanArbitrage();
-            assert.ok(Array.isArray(arb.opportunities));
+            assert.ok(Array.isArray(arb.opportunities) && arb.opportunities.length > 0);
+            for (const opp of arb.opportunities) {
+                assert.ok(opp.netEdgeBps > 0, `Expected positive net arbitrage edge, got ${opp.netEdgeBps}`);
+                assert.ok(opp.sellBid > opp.buyAsk, `Expected sellBid (${opp.sellBid}) > buyAsk (${opp.buyAsk})`);
+            }
 
             // Dark pool midpoint cross & MAQ anti-pinging
             const dp = new DarkPoolEngine(engine);
